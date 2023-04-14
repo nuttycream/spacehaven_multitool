@@ -13,6 +13,10 @@ eframe = { version = "0.21.3", default-features = false, features = [
     "glow"
 ] }
 
+sxd-document = "0.3.2"
+sxd-xpath = "0.4.2"
+tokio = "1.27.0"
+
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tracing-subscriber = "0.3"
