@@ -1199,9 +1199,10 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "log",
+ "once_cell",
  "sxd-document",
  "sxd-xpath",
- "tokio",
  "tracing-subscriber",
 ]
 
@@ -1329,17 +1330,6 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
-
-[[package]]
-name = "tokio"
-version = "1.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0de47a4eecbe11f498978a9b29d792f0d2692d1dd003650c24c76510e3bc001"
-dependencies = [
- "autocfg",
- "pin-project-lite",
- "windows-sys",
-]
 
 [[package]]
 name = "toml_datetime"

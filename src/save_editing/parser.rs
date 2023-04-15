@@ -9,13 +9,16 @@ use std::{collections::HashMap, error::Error, fs::read_to_string, path::Path};
 
 pub fn read_save(
     save_name: String,
-    save_path: &Path,
+    save_dir: &Path,
 ) -> Result<GameSave, Box<dyn std::error::Error>> {
-    let file = read_to_string(save_path.join("game"))?;
+    let save_path = save_dir.join("game");
+    let file = read_to_string(save_path.as_path())?;
     let package = parser::parse(&file)?;
     let document = package.as_document();
     let context = Context::new();
     let factory = Factory::new();
+
+    log::info!("Loading {} into the DOM parser", save_path.display());
 
     let bank = parse_bank(&document, &factory, &context)?;
     let ships = parse_ships(&document, &factory, &context)?;
@@ -25,8 +28,8 @@ pub fn read_save(
 
     Ok(GameSave {
         name: save_name,
-        path: save_path.to_path_buf(),
-        date: "Not Implemented".to_string(),
+        path: save_path,
+        date: "Not Implemented".to_string(), //info file, use UNIX epoch conversion
         bank,
         ships,
         factions,
@@ -36,7 +39,7 @@ pub fn read_save(
 }
 
 fn parse_bank(
-    document: &Document,
+    document: &Document<'_>,
     factory: &Factory,
     context: &Context<'_>,
 ) -> Result<i32, Box<dyn Error>> {
@@ -50,7 +53,7 @@ fn parse_bank(
 }
 
 fn parse_ships(
-    document: &Document,
+    document: &Document<'_>,
     factory: &Factory,
     context: &Context<'_>,
 ) -> Result<Vec<Ship>, Box<dyn Error>> {
@@ -62,6 +65,8 @@ fn parse_ships(
         &context,
         Input::Document(&document),
     )?;
+
+    log::info!("Attempting to parse {} ship nodes.", ship_nodes.size());
 
     for ship_node in ship_nodes.document_order() {
         if let Some(ship_element) = ship_node.element() {
@@ -81,7 +86,7 @@ fn parse_ships(
 }
 
 fn parse_characters(
-    ship_node: &Node,
+    ship_node: &Node<'_>,
     factory: &Factory,
     context: &Context<'_>,
 ) -> Result<Vec<Character>, Box<dyn Error>> {
@@ -94,12 +99,15 @@ fn parse_characters(
         Input::Node(&ship_node),
     )?;
 
+    log::info!("Attempting to parse {} character nodes.", character_nodes.size());
+
     for character_node in character_nodes.document_order() {
         if let Some(character_element) = character_node.element() {
             let props_node = get_child_node(&character_node, "props")?;
-            let attr_node = get_child_node(&character_node, "attr")?;
-            let traits_node = get_child_node(&character_node, "traits")?;
-            let skills_node = get_child_node(&character_node, "skills")?;
+            let pers_node = get_child_node(&character_node, "pers")?;
+            let attr_node = get_child_node(&pers_node, "attr")?;
+            let traits_node = get_child_node(&pers_node, "traits")?;
+            let skills_node = get_child_node(&pers_node, "skills")?;
 
             characters.push(Character {
                 name: parse_attribute::<String>(&character_element, "name")?,
@@ -168,7 +176,7 @@ fn parse_skills(skills_node: &Node<'_>) -> Result<HashMap<i32, i32>, Box<dyn Err
 }
 
 fn parse_storages(
-    ship_node: &Node,
+    ship_node: &Node<'_>,
     factory: &Factory,
     context: &Context<'_>,
 ) -> Result<HashMap<i32, i32>, Box<dyn Error>> {
@@ -180,6 +188,8 @@ fn parse_storages(
         &context,
         Input::Node(&ship_node),
     )?;
+
+    log::info!("Attempting to parse {} storage nodes.", storage_nodes.size());
 
     for storage_node in storage_nodes.document_order() {
         if let Some(storage_element) = storage_node.element() {
@@ -194,7 +204,7 @@ fn parse_storages(
 }
 
 fn parse_tools(
-    ship_node: &Node,
+    ship_node: &Node<'_>,
     factory: &Factory,
     context: &Context<'_>,
 ) -> Result<Vec<i32>, Box<dyn Error>> {
@@ -207,6 +217,8 @@ fn parse_tools(
         Input::Node(&ship_node),
     )?;
 
+    log::info!("Attempting to parse {} tool nodes.", tool_nodes.size());
+
     for tool_node in tool_nodes.document_order() {
         if let Some(tool_element) = tool_node.element() {
             tools.push(parse_attribute(&tool_element, "inStorage")?);
@@ -217,7 +229,7 @@ fn parse_tools(
 }
 
 fn parse_factions(
-    document: &Document,
+    document: &Document<'_>,
     factory: &Factory,
     context: &Context<'_>,
 ) -> Result<Vec<Faction>, Box<dyn Error>> {
@@ -230,6 +242,8 @@ fn parse_factions(
         Input::Document(&document),
     )?;
 
+    log::info!("Attempting to parse {} faction nodes.", faction_nodes.size());
+
     for faction_node in faction_nodes.document_order() {
         if let Some(faction_element) = faction_node.element() {
             let mut faction = Faction {
@@ -240,7 +254,7 @@ fn parse_factions(
             let relationship = Relationship {
                 name: parse_attribute::<String>(&faction_element, "s2")?,
                 amount: parse_attribute::<i32>(&faction_element, "relationship")?,
-                patience: parse_attribute::<i32>(&faction_element, "s2")?,
+                patience: parse_attribute::<i32>(&faction_element, "patience")?,
                 stance: parse_attribute::<String>(&faction_element, "stance")?,
                 trade: parse_attribute::<bool>(&faction_element, "accessTrade")?,
                 ship: parse_attribute::<bool>(&faction_element, "accessShip")?,
@@ -260,7 +274,7 @@ fn parse_factions(
 }
 
 fn parse_research(
-    document: &Document,
+    document: &Document<'_>,
     factory: &Factory,
     context: &Context<'_>,
 ) -> Result<Vec<Tech>, Box<dyn Error>> {
@@ -272,6 +286,8 @@ fn parse_research(
         &context,
         Input::Document(&document),
     )?;
+
+    log::info!("Attempting to parse {} research nodes.", research_nodes.size());
 
     for research_node in research_nodes.document_order() {
         if let Some(element) = research_node.element() {
@@ -319,7 +335,7 @@ fn parse_research(
 }
 
 fn parse_game_settings(
-    document: &Document,
+    document: &Document<'_>,
     factory: &Factory,
     context: &Context<'_>,
 ) -> Result<HashMap<String, String>, Box<dyn Error>> {
@@ -331,6 +347,8 @@ fn parse_game_settings(
         &context,
         Input::Document(&document),
     )?;
+
+    log::info!("Attempting to parse {} game setting nodes.", game_settings_nodes.size());
 
     for game_settings_node in game_settings_nodes.document_order() {
         if let Some(settings_element) = game_settings_node.element() {

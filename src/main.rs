@@ -3,12 +3,12 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> Result<(), eframe::Error> {
+    //Init logger, should not panic.
+    spacehaven_multitool::logger::init().unwrap();
 
-    
-    
     eframe::run_native(
         "SpaceHaven Multi-Tool",
         eframe::NativeOptions::default(),
-        Box::new(|cc| Box::new(spacehaven_multitool::App::new(cc)))
+        Box::new(|cc| Box::new(spacehaven_multitool::App::new(cc))),
     )
 }
