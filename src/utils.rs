@@ -62,6 +62,27 @@ where
         .map_err(|e| e.into())
 }
 
+pub fn set_attribute<T>(
+    element: &sxd_document::dom::Element<'_>,
+    attr_name: &str,
+    attr_value: T,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    T: std::fmt::Display,
+{
+    let string_value = format!("{}", attr_value);
+    element.attribute(attr_name).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Attribute not found: '{}'", attr_name),
+        )
+    })?;
+
+    element.set_attribute_value(attr_name, &string_value);
+    Ok(())
+}
+
+
 pub fn get_child_node<'a>(
     node: &'a sxd_xpath::nodeset::Node<'a>,
     child_name: &str,

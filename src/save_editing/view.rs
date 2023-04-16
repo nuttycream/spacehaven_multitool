@@ -7,7 +7,7 @@ pub struct SaveEditingView {
 
 impl SaveEditingView {
     pub fn ui(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(&ctx, |ui| {
+        egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Load Test").clicked() {
                 self.gamesave = load_save();
             }

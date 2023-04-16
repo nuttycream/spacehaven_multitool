@@ -6,7 +6,7 @@ use std::error::Error;
 
 pub fn write_save(gamesave: &GameSave) -> Result<(), Box<dyn Error>> {
     let save_path = gamesave.path.as_path();
-    let content = std::fs::read_to_string(&save_path)?;
+    let content = std::fs::read_to_string(save_path)?;
 
     let package = parser::parse(&content)?;
     let document = package.as_document();

@@ -46,7 +46,7 @@ fn parse_bank(
     let player_bank = factory
         .build("./game/playerBank/@ca")?
         .unwrap()
-        .evaluate(&context, document.root())?
+        .evaluate(context, document.root())?
         .number() as i32;
 
     Ok(player_bank)
@@ -61,9 +61,9 @@ fn parse_ships(
 
     let ship_nodes = evaluate_nodeset(
         "./game/ships/ship",
-        &factory,
-        &context,
-        Input::Document(&document),
+        factory,
+        context,
+        Input::Document(document),
     )?;
 
     log::info!("Attempting to parse {} ship nodes.", ship_nodes.size());
@@ -75,9 +75,9 @@ fn parse_ships(
                 owner: "Not Implemented".to_string(),
                 size_x: parse_attribute::<i32>(&ship_element, "sx")?,
                 size_y: parse_attribute::<i32>(&ship_element, "sy")?,
-                characters: parse_characters(&ship_node, &factory, &context)?,
-                item_storages: parse_storages(&ship_node, &factory, &context)?,
-                tool_storages: parse_tools(&ship_node, &factory, &context)?,
+                characters: parse_characters(&ship_node, factory, context)?,
+                item_storages: parse_storages(&ship_node, factory, context)?,
+                tool_storages: parse_tools(&ship_node, factory, context)?,
             });
         }
     }
@@ -92,14 +92,13 @@ fn parse_characters(
 ) -> Result<Vec<Character>, Box<dyn Error>> {
     let mut characters = Vec::new();
 
-    let character_nodes = evaluate_nodeset(
-        "./characters/c",
-        &factory,
-        &context,
-        Input::Node(&ship_node),
-    )?;
+    let character_nodes =
+        evaluate_nodeset("./characters/c", factory, context, Input::Node(ship_node))?;
 
-    log::info!("Attempting to parse {} character nodes.", character_nodes.size());
+    log::info!(
+        "Attempting to parse {} character nodes.",
+        character_nodes.size()
+    );
 
     for character_node in character_nodes.document_order() {
         if let Some(character_element) = character_node.element() {
@@ -182,14 +181,13 @@ fn parse_storages(
 ) -> Result<HashMap<i32, i32>, Box<dyn Error>> {
     let mut items = HashMap::new();
 
-    let storage_nodes = evaluate_nodeset(
-        "./e/l/feat/inv/s",
-        &factory,
-        &context,
-        Input::Node(&ship_node),
-    )?;
+    let storage_nodes =
+        evaluate_nodeset("./e/l/feat/inv/s", factory, context, Input::Node(ship_node))?;
 
-    log::info!("Attempting to parse {} storage nodes.", storage_nodes.size());
+    log::info!(
+        "Attempting to parse {} storage nodes.",
+        storage_nodes.size()
+    );
 
     for storage_node in storage_nodes.document_order() {
         if let Some(storage_element) = storage_node.element() {
@@ -212,9 +210,9 @@ fn parse_tools(
 
     let tool_nodes = evaluate_nodeset(
         "./e/lfeat/prod/inv/s[@elementaryId=162]",
-        &factory,
-        &context,
-        Input::Node(&ship_node),
+        factory,
+        context,
+        Input::Node(ship_node),
     )?;
 
     log::info!("Attempting to parse {} tool nodes.", tool_nodes.size());
@@ -237,12 +235,15 @@ fn parse_factions(
 
     let faction_nodes = evaluate_nodeset(
         "./game/hostmap/map/l",
-        &factory,
-        &context,
-        Input::Document(&document),
+        factory,
+        context,
+        Input::Document(document),
     )?;
 
-    log::info!("Attempting to parse {} faction nodes.", faction_nodes.size());
+    log::info!(
+        "Attempting to parse {} faction nodes.",
+        faction_nodes.size()
+    );
 
     for faction_node in faction_nodes.document_order() {
         if let Some(faction_element) = faction_node.element() {
@@ -282,21 +283,27 @@ fn parse_research(
 
     let research_nodes = evaluate_nodeset(
         "./game/research/states/l",
-        &factory,
-        &context,
-        Input::Document(&document),
+        factory,
+        context,
+        Input::Document(document),
     )?;
 
-    log::info!("Attempting to parse {} research nodes.", research_nodes.size());
+    log::info!(
+        "Attempting to parse {} research nodes.",
+        research_nodes.size()
+    );
 
     for research_node in research_nodes.document_order() {
         if let Some(element) = research_node.element() {
-            let mut tech = Tech::default();
-            tech.id = parse_attribute(&element, "techId")?;
+            let mut tech = Tech {
+                id: parse_attribute(&element, "techId")?,
+                ..Default::default()
+            };
+
             let stage_nodes = evaluate_nodeset(
                 "./stageStates/l",
-                &factory,
-                &context,
+                factory,
+                context,
                 Input::Node(&research_node),
             )?;
 
@@ -307,8 +314,8 @@ fn parse_research(
                     stage.is_done = parse_attribute::<bool>(&stage_element, "done")?;
                     let blocks_done_nodes = evaluate_nodeset(
                         "./blocksDone",
-                        &factory,
-                        &context,
+                        factory,
+                        context,
                         Input::Node(&stage_node),
                     )?;
 
@@ -343,19 +350,22 @@ fn parse_game_settings(
 
     let game_settings_nodes = evaluate_nodeset(
         "./game/settings/diff/modeSettings",
-        &factory,
-        &context,
-        Input::Document(&document),
+        factory,
+        context,
+        Input::Document(document),
     )?;
 
-    log::info!("Attempting to parse {} game setting nodes.", game_settings_nodes.size());
+    log::info!(
+        "Attempting to parse {} game setting nodes.",
+        game_settings_nodes.size()
+    );
 
     for game_settings_node in game_settings_nodes.document_order() {
         if let Some(settings_element) = game_settings_node.element() {
             for attribute in settings_element.attributes() {
                 game_setttings.insert(
-                    attribute.name().local_part().to_string(), 
-                    attribute.value().to_string()
+                    attribute.name().local_part().to_string(),
+                    attribute.value().to_string(),
                 );
             }
         }
