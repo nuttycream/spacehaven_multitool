@@ -17,11 +17,7 @@ mod tests {
 
     #[test]
     fn test_read_save() {
-        let save_dir = std::env::current_dir()
-            .unwrap()
-            .join("src")
-            .join("tests")
-            .join("saves");
+        let save_dir = std::env::current_dir().unwrap().join("src/tests/saves");
 
         for entry in std::fs::read_dir(&save_dir).unwrap() {
             let entry = entry.unwrap();
@@ -40,5 +36,10 @@ mod tests {
                 assert_eq!(game_save.name, file_name);
             }
         }
-    } 
+    }
+
+    #[test]
+    fn test_write_save() {
+
+    }
 }
