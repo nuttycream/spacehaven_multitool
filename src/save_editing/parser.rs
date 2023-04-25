@@ -17,9 +17,9 @@ pub fn read_save(
 
     let bank = get_attribute_value_xpath(&root, "/game/playerBank", "ca")?;
     let ships = parse_ships(&root)?;
-    let factions = parse_factions()?;
-    let research_tree = parse_research()?;
-    let game_settings = parse_game_settings()?;
+    let factions = parse_factions(&root)?;
+    let research_tree = parse_research(&root)?;
+    let game_settings = parse_game_settings(&root)?;
 
     Ok(GameSave {
         name: save_name,
@@ -154,18 +154,72 @@ fn parse_tools(ship_node: &NodePtr) -> Result<Vec<i32>, Box<dyn Error>> {
     Ok(tools)
 }
 
-fn parse_factions() -> Result<Vec<Faction>, Box<dyn Error>> {
-    let factions: Vec<Faction> = Vec::new();
+fn parse_factions(root: &NodePtr) -> Result<Vec<Faction>, Box<dyn Error>> {
+    let mut factions: Vec<Faction> = Vec::new();
+    let faction_nodes = root.get_nodeset("/game/hostmap/map/l")?;
+
+    for faction_node in faction_nodes {
+        let mut faction = Faction {
+            name: get_attribute_value_node(&faction_node, "s1")?,
+            relationships: Default::default(),
+        };
+
+        let relationship = Relationship {
+            name: get_attribute_value_node(&faction_node, "s2")?,
+            amount: get_attribute_value_node(&faction_node, "relationship")?,
+            patience: get_attribute_value_node(&faction_node, "patience")?,
+            stance: get_attribute_value_node(&faction_node, "stance")?,
+            trade: get_attribute_value_node(&faction_node, "accessTrade")?,
+            ship: get_attribute_value_node(&faction_node, "accessShip")?,
+            vision: get_attribute_value_node(&faction_node, "accessVision")?,
+        };
+
+        if let Some(existing_faction) = factions.iter_mut().find(|f| f.name == faction.name) {
+            existing_faction.relationships.push(relationship);
+        } else {
+            faction.relationships.push(relationship);
+            factions.push(faction);
+        }
+    }
     Ok(factions)
 }
 
-fn parse_research() -> Result<Vec<Tech>, Box<dyn Error>> {
-    let research_tree = Vec::new();
+fn parse_research(root: &NodePtr) -> Result<Vec<Tech>, Box<dyn Error>> {
+    let mut research_tree = Vec::new();
+    let research_nodes = root.get_nodeset("/game/research/states/l")?;
+
+    for research_node in research_nodes {
+        let mut tech = Tech {
+            id: get_attribute_value_node(&research_node, "techId")?,
+            ..Default::default()
+        };
+
+        let stage_nodes = research_node.get_nodeset("./stageStates/l")?;
+
+        for stage_node in stage_nodes {
+            let mut stage = Stage::default();
+            let stage_level = get_attribute_value_node(&stage_node, "stage")?;
+
+            let blocks_nodes = stage_node.get_nodeset("./blocksDone")?;
+
+            for blocks_node in blocks_nodes {
+                stage.basic = get_attribute_value_node(&blocks_node, "level1")?;
+                stage.intermediate = get_attribute_value_node(&blocks_node, "level2")?;
+                stage.advanced = get_attribute_value_node(&blocks_node, "level3")?;
+            }
+
+            tech.stages.insert(stage_level, stage);
+        }
+
+        research_tree.push(tech);
+    }
     Ok(research_tree)
 }
 
-fn parse_game_settings() -> Result<HashMap<String, String>, Box<dyn Error>> {
+fn parse_game_settings(root: &NodePtr) -> Result<HashMap<String, String>, Box<dyn Error>> {
     let game_setttings = HashMap::new();
+
+    let settings_nodes = root.get_first_node("./game/settings/diff/modeSettings");
 
     Ok(game_setttings)
 }
