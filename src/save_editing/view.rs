@@ -23,7 +23,7 @@ fn load_save() -> GameSave {
     let result = match read_save(
         "A Small Hope-1".to_string(),
         std::path::Path::new(
-            r"C:\Program Files (x86)\Steam\steamapps\common\SpaceHaven\savegames\A Small Hope-1\save",
+            r"C:\Program Files (x86)\Steam\steamapps\common\SpaceHaven\savegames\Abandoned Mining Station-1\save",
         ),
     ) {
         Ok(save_game) => {

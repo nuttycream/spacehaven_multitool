@@ -1,30 +1,25 @@
 use super::gamesave::{Character, Faction, GameSave, Relationship, Ship, Stage, Tech};
+use crate::utils::{get_attribute_value_node, get_attribute_value_xpath};
 
-use crate::utils::{evaluate_nodeset, get_child_node, parse_attribute, Input};
+use amxml::dom::{new_document, NodePtr};
 
-use sxd_document::{dom::Document, parser};
-use sxd_xpath::{nodeset::Node, Context, Factory};
-
-use std::{collections::HashMap, error::Error, fs::read_to_string, path::Path};
+use std::{collections::HashMap, error::Error, hash::Hash};
 
 pub fn read_save(
     save_name: String,
-    save_dir: &Path,
+    save_dir: &std::path::Path,
 ) -> Result<GameSave, Box<dyn std::error::Error>> {
     let save_path = save_dir.join("game");
-    let file = read_to_string(save_path.as_path())?;
-    let package = parser::parse(&file)?;
-    let document = package.as_document();
-    let context = Context::new();
-    let factory = Factory::new();
+    let content = std::fs::read_to_string(save_path.as_path())?;
+    log::info!("Parsing {}", save_path.display());
+    let doc = new_document(&content)?;
+    let root = doc.root_element();
 
-    log::info!("Loading {} into the DOM parser", save_path.display());
-
-    let bank = parse_bank(&document, &factory, &context)?;
-    let ships = parse_ships(&document, &factory, &context)?;
-    let factions = parse_factions(&document, &factory, &context)?;
-    let research_tree = parse_research(&document, &factory, &context)?;
-    let game_settings = parse_game_settings(&document, &factory, &context)?;
+    let bank = get_attribute_value_xpath(&root, "/game/playerBank", "ca")?;
+    let ships = parse_ships(&root)?;
+    let factions = parse_factions()?;
+    let research_tree = parse_research()?;
+    let game_settings = parse_game_settings()?;
 
     Ok(GameSave {
         name: save_name,
@@ -38,338 +33,126 @@ pub fn read_save(
     })
 }
 
-fn parse_bank(
-    document: &Document<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<i32, Box<dyn Error>> {
-    let player_bank = factory
-        .build("./game/playerBank/@ca")?
-        .unwrap()
-        .evaluate(context, document.root())?
-        .number() as i32;
-
-    Ok(player_bank)
-}
-
-fn parse_ships(
-    document: &Document<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<Vec<Ship>, Box<dyn Error>> {
+fn parse_ships(root: &NodePtr) -> Result<Vec<Ship>, Box<dyn Error>> {
     let mut ships = Vec::new();
+    let ship_nodes = root.get_nodeset("/game/ships/ship")?;
 
-    let ship_nodes = evaluate_nodeset(
-        "./game/ships/ship",
-        factory,
-        context,
-        Input::Document(document),
-    )?;
+    log::info!("Found {} ship/s", ship_nodes.len());
 
-    log::info!("Attempting to parse {} ship nodes.", ship_nodes.size());
-
-    for ship_node in ship_nodes.document_order() {
-        if let Some(ship_element) = ship_node.element() {
-            ships.push(Ship {
-                name: parse_attribute::<String>(&ship_element, "sname")?,
-                owner: "Not Implemented".to_string(),
-                size_x: parse_attribute::<i32>(&ship_element, "sx")?,
-                size_y: parse_attribute::<i32>(&ship_element, "sy")?,
-                characters: parse_characters(&ship_node, factory, context)?,
-                item_storages: parse_storages(&ship_node, factory, context)?,
-                tool_storages: parse_tools(&ship_node, factory, context)?,
-            });
-        }
+    for ship_node in ship_nodes {
+        let ship = Ship {
+            name: get_attribute_value_node(&ship_node, "sname").unwrap_or("None".to_string()),
+            owner: "Not Implemented".to_string(),
+            size_x: get_attribute_value_node(&ship_node, "sx")?,
+            size_y: get_attribute_value_node(&ship_node, "sy")?,
+            characters: parse_characters(&ship_node)?,
+            item_storages: parse_storages()?,
+            tool_storages: parse_tools()?,
+        };
+        log::info!("Successfully parsed {}", ship.name);
+        ships.push(ship);
     }
 
     Ok(ships)
 }
 
-fn parse_characters(
-    ship_node: &Node<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<Vec<Character>, Box<dyn Error>> {
+fn parse_characters(ship_node: &NodePtr) -> Result<Vec<Character>, Box<dyn Error>> {
     let mut characters = Vec::new();
+    let character_nodes = ship_node.get_nodeset("./characters/c")?;
 
-    let character_nodes =
-        evaluate_nodeset("./characters/c", factory, context, Input::Node(ship_node))?;
+    log::info!("Found {} characters", character_nodes.len());
 
-    log::info!(
-        "Attempting to parse {} character nodes.",
-        character_nodes.size()
-    );
-
-    for character_node in character_nodes.document_order() {
-        if let Some(character_element) = character_node.element() {
-            let props_node = get_child_node(&character_node, "props")?;
-            let pers_node = get_child_node(&character_node, "pers")?;
-            let attr_node = get_child_node(&pers_node, "attr")?;
-            let traits_node = get_child_node(&pers_node, "traits")?;
-            let skills_node = get_child_node(&pers_node, "skills")?;
-
-            characters.push(Character {
-                name: parse_attribute::<String>(&character_element, "name")?,
-                side: parse_attribute::<String>(&character_element, "side")?,
-                stats: parse_props(&props_node)?,
-                attributes: parse_attr(&attr_node)?,
-                traits: parse_traits(&traits_node)?,
-                skills: parse_skills(&skills_node)?,
-            });
-        }
+    for character_node in character_nodes {
+        let character = Character {
+            name: get_attribute_value_node(&character_node, "name")?,
+            side: get_attribute_value_node(&character_node, "side")?,
+            stats: parse_stats(&character_node)?,
+            attributes: parse_attributes(&character_node)?,
+            traits: parse_traits(&character_node)?,
+            skills: parse_skills(&character_node)?,
+        };
+        characters.push(character);
     }
 
     Ok(characters)
 }
 
-fn parse_props(props_node: &Node<'_>) -> Result<HashMap<String, i32>, Box<dyn Error>> {
-    let mut props_map = HashMap::new();
+fn parse_stats(char_node: &NodePtr) -> Result<HashMap<String, i32>, Box<dyn Error>> {
+    let mut stats = HashMap::new();
 
-    for child_node in props_node.children() {
-        if let Some(node_element) = child_node.element() {
-            if let Some(name) = child_node.prefixed_name() {
-                props_map.insert(name, parse_attribute::<i32>(&node_element, "v")?);
-            }
-        }
+    let props_nodes = char_node.get_nodeset("./props/*[@v]")?;
+
+    for stats_node in props_nodes {
+        stats.insert(
+            stats_node.local_name(),
+            get_attribute_value_node(&stats_node, "v")?,
+        );
     }
-    Ok(props_map)
+    Ok(stats)
 }
 
-fn parse_attr(attr_node: &Node<'_>) -> Result<HashMap<i32, i32>, Box<dyn Error>> {
-    let mut attr_map = HashMap::new();
-
-    for child_node in attr_node.children() {
-        if let Some(node_element) = child_node.element() {
-            attr_map.insert(
-                parse_attribute::<i32>(&node_element, "id")?,
-                parse_attribute::<i32>(&node_element, "points")?,
-            );
-        }
+fn parse_attributes(char_node: &NodePtr) -> Result<HashMap<i32, i32>, Box<dyn Error>> {
+    let mut attributes = HashMap::new();
+    let attribute_nodes = char_node.get_nodeset("./pers/attr/a")?;
+    for attribute_node in attribute_nodes {
+        attributes.insert(
+            get_attribute_value_node(&attribute_node, "id")?, 
+            get_attribute_value_node(&attribute_node, "points")?
+        );
     }
-    Ok(attr_map)
+    //log::info!("{:?}", attributes);
+    Ok(attributes)
 }
 
-fn parse_traits(traits_node: &Node<'_>) -> Result<Vec<i32>, Box<dyn Error>> {
+fn parse_traits(char_node: &NodePtr) -> Result<Vec<i32>, Box<dyn Error>> {
     let mut traits = Vec::new();
+    let traits_nodes = char_node.get_nodeset("./pers/traits/t")?;
 
-    for child_node in traits_node.children() {
-        if let Some(node_element) = child_node.element() {
-            traits.push(parse_attribute::<i32>(&node_element, "id")?);
-        }
+    for traits_node in traits_nodes {
+        traits.push(get_attribute_value_node(&traits_node, "id")?);
     }
+
     Ok(traits)
 }
 
-fn parse_skills(skills_node: &Node<'_>) -> Result<HashMap<i32, i32>, Box<dyn Error>> {
+fn parse_skills(char_node: &NodePtr) -> Result<HashMap<i32, i32>, Box<dyn Error>> {
     let mut skills = HashMap::new();
+    let skills_nodes = char_node.get_nodeset("./pers/skills/s")?;
 
-    for child_node in skills_node.children() {
-        if let Some(node_element) = child_node.element() {
-            skills.insert(
-                parse_attribute::<i32>(&node_element, "sk")?,
-                parse_attribute::<i32>(&node_element, "level")?,
-            );
-        }
+    for skill_node in skills_nodes {
+        skills.insert(
+            get_attribute_value_node(&skill_node, "sk")?, 
+            get_attribute_value_node(&skill_node, "level")?
+        );
     }
+
     Ok(skills)
 }
 
-fn parse_storages(
-    ship_node: &Node<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<HashMap<i32, i32>, Box<dyn Error>> {
-    let mut items = HashMap::new();
-
-    let storage_nodes =
-        evaluate_nodeset("./e/l/feat/inv/s", factory, context, Input::Node(ship_node))?;
-
-    log::info!(
-        "Attempting to parse {} storage nodes.",
-        storage_nodes.size()
-    );
-
-    for storage_node in storage_nodes.document_order() {
-        if let Some(storage_element) = storage_node.element() {
-            items.insert(
-                parse_attribute(&storage_element, "elementaryId")?,
-                parse_attribute(&storage_element, "inStorage")?,
-            );
-        }
-    }
+fn parse_storages() -> Result<HashMap<i32, i32>, Box<dyn Error>> {
+    let items = HashMap::new();
 
     Ok(items)
 }
 
-fn parse_tools(
-    ship_node: &Node<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<Vec<i32>, Box<dyn Error>> {
-    let mut tools = Vec::new();
-
-    let tool_nodes = evaluate_nodeset(
-        "./e/lfeat/prod/inv/s[@elementaryId=162]",
-        factory,
-        context,
-        Input::Node(ship_node),
-    )?;
-
-    log::info!("Attempting to parse {} tool nodes.", tool_nodes.size());
-
-    for tool_node in tool_nodes.document_order() {
-        if let Some(tool_element) = tool_node.element() {
-            tools.push(parse_attribute(&tool_element, "inStorage")?);
-        }
-    }
+fn parse_tools() -> Result<Vec<i32>, Box<dyn Error>> {
+    let tools = Vec::new();
 
     Ok(tools)
 }
 
-fn parse_factions(
-    document: &Document<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<Vec<Faction>, Box<dyn Error>> {
-    let mut factions: Vec<Faction> = Vec::new();
-
-    let faction_nodes = evaluate_nodeset(
-        "./game/hostmap/map/l",
-        factory,
-        context,
-        Input::Document(document),
-    )?;
-
-    log::info!(
-        "Attempting to parse {} faction nodes.",
-        faction_nodes.size()
-    );
-
-    for faction_node in faction_nodes.document_order() {
-        if let Some(faction_element) = faction_node.element() {
-            let mut faction = Faction {
-                name: parse_attribute::<String>(&faction_element, "s1")?,
-                relationships: Default::default(),
-            };
-
-            let relationship = Relationship {
-                name: parse_attribute::<String>(&faction_element, "s2")?,
-                amount: parse_attribute::<i32>(&faction_element, "relationship")?,
-                patience: parse_attribute::<i32>(&faction_element, "patience")?,
-                stance: parse_attribute::<String>(&faction_element, "stance")?,
-                trade: parse_attribute::<bool>(&faction_element, "accessTrade")?,
-                ship: parse_attribute::<bool>(&faction_element, "accessShip")?,
-                vision: parse_attribute::<bool>(&faction_element, "accessVision")?,
-            };
-
-            if let Some(existing_faction) = factions.iter_mut().find(|f| f.name == faction.name) {
-                existing_faction.relationships.push(relationship);
-            } else {
-                faction.relationships.push(relationship);
-                factions.push(faction);
-            }
-        }
-    }
-
+fn parse_factions() -> Result<Vec<Faction>, Box<dyn Error>> {
+    let factions: Vec<Faction> = Vec::new();
     Ok(factions)
 }
 
-fn parse_research(
-    document: &Document<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<Vec<Tech>, Box<dyn Error>> {
-    let mut research_tree = Vec::new();
-
-    let research_nodes = evaluate_nodeset(
-        "./game/research/states/l",
-        factory,
-        context,
-        Input::Document(document),
-    )?;
-
-    log::info!(
-        "Attempting to parse {} research nodes.",
-        research_nodes.size()
-    );
-
-    for research_node in research_nodes.document_order() {
-        if let Some(element) = research_node.element() {
-            let mut tech = Tech {
-                id: parse_attribute(&element, "techId")?,
-                ..Default::default()
-            };
-
-            let stage_nodes = evaluate_nodeset(
-                "./stageStates/l",
-                factory,
-                context,
-                Input::Node(&research_node),
-            )?;
-
-            for stage_node in stage_nodes.document_order() {
-                if let Some(stage_element) = stage_node.element() {
-                    let mut stage = Stage::default();
-                    let stage_level = parse_attribute::<i32>(&stage_element, "stage")?;
-                    stage.is_done = parse_attribute::<bool>(&stage_element, "done")?;
-                    let blocks_done_nodes = evaluate_nodeset(
-                        "./blocksDone",
-                        factory,
-                        context,
-                        Input::Node(&stage_node),
-                    )?;
-
-                    for blocks_done_node in blocks_done_nodes.document_order() {
-                        if let Some(blocks_done_element) = blocks_done_node.element() {
-                            stage.basic = parse_attribute::<i32>(&blocks_done_element, "level1")?;
-                            stage.intermediate =
-                                parse_attribute::<i32>(&blocks_done_element, "level2")?;
-                            stage.advanced =
-                                parse_attribute::<i32>(&blocks_done_element, "level3")?;
-
-                            //log::info!("{:?}", blocks_done_element.name())
-                        }
-                    }
-
-                    tech.stages.insert(stage_level, stage);
-                }
-            }
-            research_tree.push(tech);
-        }
-    }
-
+fn parse_research() -> Result<Vec<Tech>, Box<dyn Error>> {
+    let research_tree = Vec::new();
     Ok(research_tree)
 }
 
-fn parse_game_settings(
-    document: &Document<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<HashMap<String, String>, Box<dyn Error>> {
-    let mut game_setttings = HashMap::new();
-
-    let game_settings_nodes = evaluate_nodeset(
-        "./game/settings/diff/modeSettings",
-        factory,
-        context,
-        Input::Document(document),
-    )?;
-
-    log::info!(
-        "Attempting to parse {} game setting nodes.",
-        game_settings_nodes.size()
-    );
-
-    for game_settings_node in game_settings_nodes.document_order() {
-        if let Some(settings_element) = game_settings_node.element() {
-            for attribute in settings_element.attributes() {
-                game_setttings.insert(
-                    attribute.name().local_part().to_string(),
-                    attribute.value().to_string(),
-                );
-            }
-        }
-    }
+fn parse_game_settings() -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let game_setttings = HashMap::new();
 
     Ok(game_setttings)
 }

@@ -1,9 +1,8 @@
-use crate::utils::{Input, evaluate_nodeset, set_attribute};
 
-use super::gamesave::{GameSave, Ship};
 
-use sxd_document::{dom::Document, parser, writer};
-use sxd_xpath::{Factory, Context};
+use super::gamesave::GameSave;
+
+use amxml::dom::*;
 
 use std::error::Error;
 
@@ -11,59 +10,37 @@ pub fn write_save(gamesave: &GameSave) -> Result<(), Box<dyn Error>> {
     let save_path = gamesave.path.as_path();
     let content = std::fs::read_to_string(save_path)?;
 
-    let package = parser::parse(&content)?;
-    let document = package.as_document();
-    let context = Context::new();
-    let factory = Factory::new();
+    let doc = new_document(&content)?;
 
-    write_player_bank(11111, &document, &factory, &context)?;
-    write_ships(&gamesave.ships, &document, &factory, &context)?;
+    let root = doc.root_element();
 
-    let mut file = std::fs::File::create(save_path)?;
-    writer::Writer::new().format_document(&document, &mut file)?;
+    //let player_bank_xpath = "/game/playerBank[@ca]";
 
-    Ok(())
-}
+    //let player_bank = root.eval_xpath(player_bank_xpath)?;
 
-fn write_player_bank(
-    amount: i32,
-    document: &Document<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<(), Box<dyn Error>> {
+    let mut amount = String::new();
 
-    let player_bank_element = evaluate_nodeset(
-        "./game/playerBank", 
-        factory, 
-        context, 
-        Input::Document(document))?
-        .document_order_first()
-        .unwrap()
-        .element()
-        .unwrap();
+    root.each_node("/game/playerBank[@ca]", |n| {
+        amount = n.attribute_value("ca").unwrap();
+    })?;
 
-    set_attribute(&player_bank_element, "ca", amount)?;
-        
-    Ok(())
-}
+    log::info!("{:?}", amount);
 
-fn write_ships(
-    _ships: &Vec<Ship>, 
-    document: &Document<'_>,
-    factory: &Factory,
-    context: &Context<'_>,
-) -> Result<(), Box<dyn Error>> {
+    root.each_node("/game/playerBank[@ca]", |mut n| {
+        n.set_attribute("ca", "111111");
+    })?;
+
+    root.each_node("/game/playerBank[@ca]", |n| {
+        amount = n.attribute_value("ca").unwrap();
+    })?;
+
+    log::info!("{:?}", amount);
     
-    let ship_nodes = evaluate_nodeset(
-        "./game/ships/ship",
-        factory,
-        context,
-        Input::Document(document),
-    )?;
+    let result = root.to_string();
 
-    for _ship_node in ship_nodes.document_order() {
-
-    }
+    std::fs::write(save_path, result)?;
 
     Ok(())
 }
+
+
