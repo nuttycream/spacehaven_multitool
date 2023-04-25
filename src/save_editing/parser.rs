@@ -3,7 +3,7 @@ use crate::utils::{get_attribute_value_node, get_attribute_value_xpath};
 
 use amxml::dom::{new_document, NodePtr};
 
-use std::{collections::HashMap, error::Error, hash::Hash};
+use std::{collections::HashMap, error::Error};
 
 pub fn read_save(
     save_name: String,
@@ -46,8 +46,8 @@ fn parse_ships(root: &NodePtr) -> Result<Vec<Ship>, Box<dyn Error>> {
             size_x: get_attribute_value_node(&ship_node, "sx")?,
             size_y: get_attribute_value_node(&ship_node, "sy")?,
             characters: parse_characters(&ship_node)?,
-            item_storages: parse_storages()?,
-            tool_storages: parse_tools()?,
+            item_storages: parse_storages(&ship_node)?,
+            tool_storages: parse_tools(&ship_node)?,
         };
         log::info!("Successfully parsed {}", ship.name);
         ships.push(ship);
@@ -96,8 +96,8 @@ fn parse_attributes(char_node: &NodePtr) -> Result<HashMap<i32, i32>, Box<dyn Er
     let attribute_nodes = char_node.get_nodeset("./pers/attr/a")?;
     for attribute_node in attribute_nodes {
         attributes.insert(
-            get_attribute_value_node(&attribute_node, "id")?, 
-            get_attribute_value_node(&attribute_node, "points")?
+            get_attribute_value_node(&attribute_node, "id")?,
+            get_attribute_value_node(&attribute_node, "points")?,
         );
     }
     //log::info!("{:?}", attributes);
@@ -121,23 +121,36 @@ fn parse_skills(char_node: &NodePtr) -> Result<HashMap<i32, i32>, Box<dyn Error>
 
     for skill_node in skills_nodes {
         skills.insert(
-            get_attribute_value_node(&skill_node, "sk")?, 
-            get_attribute_value_node(&skill_node, "level")?
+            get_attribute_value_node(&skill_node, "sk")?,
+            get_attribute_value_node(&skill_node, "level")?,
         );
     }
 
     Ok(skills)
 }
 
-fn parse_storages() -> Result<HashMap<i32, i32>, Box<dyn Error>> {
-    let items = HashMap::new();
+fn parse_storages(ship_node: &NodePtr) -> Result<HashMap<i32, i32>, Box<dyn Error>> {
+    let mut items = HashMap::new();
 
+    let storage_nodes = ship_node.get_nodeset("./e/l/feat/inv/s")?;
+
+    for storage_node in storage_nodes {
+        items.insert(
+            get_attribute_value_node(&storage_node, "elementaryId")?,
+            get_attribute_value_node(&storage_node, "inStorage")?,
+        );
+    }
     Ok(items)
 }
 
-fn parse_tools() -> Result<Vec<i32>, Box<dyn Error>> {
-    let tools = Vec::new();
+fn parse_tools(ship_node: &NodePtr) -> Result<Vec<i32>, Box<dyn Error>> {
+    let mut tools = Vec::new();
 
+    let tool_nodes = ship_node.get_nodeset("./e/lfeat/prod/inv/s[@elementaryId=162]")?;
+
+    for tool_node in tool_nodes {
+        tools.push(get_attribute_value_node(&tool_node, "inStorage")?);
+    }
     Ok(tools)
 }
 
