@@ -217,9 +217,15 @@ fn parse_research(root: &NodePtr) -> Result<Vec<Tech>, Box<dyn Error>> {
 }
 
 fn parse_game_settings(root: &NodePtr) -> Result<HashMap<String, String>, Box<dyn Error>> {
-    let game_setttings = HashMap::new();
+    let mut game_setttings = HashMap::new();
 
-    let settings_nodes = root.get_first_node("./game/settings/diff/modeSettings");
+    let settings_nodes = root.get_nodeset("./game/settings/diff/modeSettings")?;
+
+    for settings_node in settings_nodes {
+        for attribute in settings_node.attributes() {
+            game_setttings.insert(attribute.local_name(), attribute.value());
+        }
+    }
 
     Ok(game_setttings)
 }
