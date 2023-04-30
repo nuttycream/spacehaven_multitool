@@ -1,5 +1,5 @@
 use super::gamesave::{Character, Faction, GameSave, Relationship, Ship, Stage, Tech};
-use crate::utils::{get_attribute_value_node, get_attribute_value_xpath};
+use crate::utils::get_attribute_value_node;
 
 use amxml::dom::{new_document, NodePtr};
 
@@ -9,13 +9,23 @@ pub fn read_save(
     save_name: String,
     save_dir: &std::path::Path,
 ) -> Result<GameSave, Box<dyn std::error::Error>> {
-    let save_path = save_dir.join("game");
-    let content = std::fs::read_to_string(save_path.as_path())?;
-    log::info!("Parsing {}", save_path.display());
-    let doc = new_document(&content)?;
-    let root = doc.root_element();
+    let info_path = save_dir.join("info");
+    let mut content = std::fs::read_to_string(info_path.as_path())?;
+    let mut doc = new_document(&content)?;
+    let mut root = doc.root_element();
+    let date = get_attribute_value_node(&root, "realTimeDate")?;
 
-    let bank = get_attribute_value_xpath(&root, "/game/playerBank", "ca")?;
+    let save_path = save_dir.join("game");
+    content = std::fs::read_to_string(save_path.as_path())?;
+    log::info!("Parsing {}", save_path.display());
+    doc = new_document(&content)?;
+    root = doc.root_element();
+
+    let player_bank_node = root
+        .get_first_node("/game/playerBank")
+        .ok_or("Player bank node not found. game file might be broken or tool is out of date.")?;
+
+    let bank = get_attribute_value_node(&player_bank_node, "ca")?;
     let ships = parse_ships(&root)?;
     let factions = parse_factions(&root)?;
     let research_tree = parse_research(&root)?;
@@ -24,7 +34,7 @@ pub fn read_save(
     Ok(GameSave {
         name: save_name,
         path: save_path,
-        date: "Not Implemented".to_string(), //info file, use UNIX epoch conversion
+        date, //info file, use UNIX epoch conversion
         bank,
         ships,
         factions,
@@ -40,8 +50,10 @@ fn parse_ships(root: &NodePtr) -> Result<Vec<Ship>, Box<dyn Error>> {
     log::info!("Found {} ship/s", ship_nodes.len());
 
     for ship_node in ship_nodes {
+        let name = get_attribute_value_node(&ship_node, "sname").unwrap_or("NO NAME".to_string());
+        log::info!("Parsing {}", name);
         let ship = Ship {
-            name: get_attribute_value_node(&ship_node, "sname").unwrap_or("None".to_string()),
+            name,
             owner: "Not Implemented".to_string(),
             size_x: get_attribute_value_node(&ship_node, "sx")?,
             size_y: get_attribute_value_node(&ship_node, "sy")?,
@@ -134,6 +146,8 @@ fn parse_storages(ship_node: &NodePtr) -> Result<HashMap<i32, i32>, Box<dyn Erro
 
     let storage_nodes = ship_node.get_nodeset("./e/l/feat/inv/s")?;
 
+    log::info!("Found {} items", storage_nodes.len());
+
     for storage_node in storage_nodes {
         items.insert(
             get_attribute_value_node(&storage_node, "elementaryId")?,
@@ -157,6 +171,8 @@ fn parse_tools(ship_node: &NodePtr) -> Result<Vec<i32>, Box<dyn Error>> {
 fn parse_factions(root: &NodePtr) -> Result<Vec<Faction>, Box<dyn Error>> {
     let mut factions: Vec<Faction> = Vec::new();
     let faction_nodes = root.get_nodeset("/game/hostmap/map/l")?;
+
+    log::info!("Found {} faction relationships", faction_nodes.len());
 
     for faction_node in faction_nodes {
         let mut faction = Faction {
@@ -188,6 +204,8 @@ fn parse_research(root: &NodePtr) -> Result<Vec<Tech>, Box<dyn Error>> {
     let mut research_tree = Vec::new();
     let research_nodes = root.get_nodeset("/game/research/states/l")?;
 
+    log::info!("Found {} research nodes", research_nodes.len());
+
     for research_node in research_nodes {
         let mut tech = Tech {
             id: get_attribute_value_node(&research_node, "techId")?,
@@ -200,9 +218,7 @@ fn parse_research(root: &NodePtr) -> Result<Vec<Tech>, Box<dyn Error>> {
             let mut stage = Stage::default();
             let stage_level = get_attribute_value_node(&stage_node, "stage")?;
 
-            let blocks_nodes = stage_node.get_nodeset("./blocksDone")?;
-
-            for blocks_node in blocks_nodes {
+            if let Some(blocks_node) = stage_node.get_first_node("./blocksDone") {
                 stage.basic = get_attribute_value_node(&blocks_node, "level1")?;
                 stage.intermediate = get_attribute_value_node(&blocks_node, "level2")?;
                 stage.advanced = get_attribute_value_node(&blocks_node, "level3")?;
@@ -218,14 +234,14 @@ fn parse_research(root: &NodePtr) -> Result<Vec<Tech>, Box<dyn Error>> {
 
 fn parse_game_settings(root: &NodePtr) -> Result<HashMap<String, String>, Box<dyn Error>> {
     let mut game_setttings = HashMap::new();
-
-    let settings_nodes = root.get_nodeset("./game/settings/diff/modeSettings")?;
-
-    for settings_node in settings_nodes {
+    let mut count = 0;
+    if let Some(settings_node) = root.get_first_node("/game/settings/diff/modeSettings") {
         for attribute in settings_node.attributes() {
             game_setttings.insert(attribute.local_name(), attribute.value());
+            count = count + 1;
         }
+        
     }
-
+    log::info!("Parsed {} settings attributes", count);
     Ok(game_setttings)
 }

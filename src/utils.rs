@@ -1,29 +1,3 @@
-pub fn get_attribute_value_xpath<T>(
-    node: &amxml::dom::NodePtr,
-    xpath: &str,
-    attr_name: &str,
-) -> Result<T, Box<dyn std::error::Error>>
-where
-    T: std::str::FromStr,
-    T::Err: std::fmt::Display,
-{
-    let mut result: Option<T> = None;
-
-    node.each_node(xpath, |n| {
-        result = n
-            .attribute_value(attr_name)
-            .and_then(|value| value.parse().ok());
-    })?;
-
-    match result {
-        Some(value) => Ok(value),
-        None => Err("Attribute not found".into()),
-    }
-    .map_err(|e: Box<dyn std::error::Error>| {
-        format!("Failed to parse attribute value: {}", e).into()
-    })
-}
-
 pub fn get_attribute_value_node<T>(
     node: &amxml::dom::NodePtr,
     attr_name: &str,
@@ -32,19 +6,35 @@ where
     T: std::str::FromStr,
     T::Err: std::fmt::Display,
 {
-    let mut result: Option<T> = None;
 
-    result = node
+    let result = node
         .attribute_value(attr_name)
         .and_then(|value| value.parse().ok());
 
     match result {
         Some(value) => Ok(value),
-        None => Err("Attribute not found".into()),
+        None => Err(format!("Attribute {} not found in {} node", attr_name, node.local_name()).into()),
     }
     .map_err(|e: Box<dyn std::error::Error>| {
         format!("Failed to parse attribute value: {}", e).into()
     })
+}
+
+pub fn set_attribute_value_node<T>(
+    node: &mut amxml::dom::NodePtr,
+    attr_name: &str,
+    attr_value: T,
+) -> Result<(), Box<dyn std::error::Error>> 
+where
+    T: std::fmt::Display,
+{
+    let attr_value_str = format!("{}", attr_value);
+    if (node.attributes().iter().find(|attr| attr.name() == attr_name)).is_some() {
+        node.set_attribute(attr_name, &attr_value_str);
+        Ok(())
+    } else {
+        Err(format!("Attribute {} not found in {} node", attr_name, node.local_name()).into())
+    }
 }
 
 pub fn get_mod_dirs() -> Result<Vec<(String, std::path::PathBuf)>, Box<dyn std::error::Error>> {

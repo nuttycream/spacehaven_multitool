@@ -46,7 +46,7 @@ fn save(gamesave: &GameSave) {
     let start_time = std::time::Instant::now();
     match write_save(gamesave) {
         Ok(()) => {
-            log::info!("Successful saved ({} ms)", start_time.elapsed().as_millis());
+            log::info!("Successful save ({} ms)", start_time.elapsed().as_millis());
         }
         Err(err) => {
             log::error!(
