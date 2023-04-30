@@ -29,7 +29,7 @@ where
     T: std::fmt::Display,
 {
     let attr_value_str = format!("{}", attr_value);
-    if (node.attributes().iter().find(|attr| attr.name() == attr_name)).is_some() {
+    if node.attributes().iter().any(|attr| attr.name() == attr_name) {
         node.set_attribute(attr_name, &attr_value_str);
         Ok(())
     } else {
@@ -52,7 +52,7 @@ pub fn get_mod_dirs() -> Result<Vec<(String, std::path::PathBuf)>, Box<dyn std::
 
 pub fn get_save_dirs() -> Result<Vec<(String, std::path::PathBuf)>, Box<dyn std::error::Error>> {
     let gamedir = find_steam_game()?.join("savegames");
-    let results = std::fs::read_dir(&gamedir)?
+    let results = std::fs::read_dir(gamedir)?
         .filter_map(|entry| {
             let subpath = entry.ok()?.path();
             subpath.file_name().map(|subdir_name| {

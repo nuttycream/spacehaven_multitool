@@ -238,9 +238,8 @@ fn parse_game_settings(root: &NodePtr) -> Result<HashMap<String, String>, Box<dy
     if let Some(settings_node) = root.get_first_node("/game/settings/diff/modeSettings") {
         for attribute in settings_node.attributes() {
             game_setttings.insert(attribute.local_name(), attribute.value());
-            count = count + 1;
+            count += 1;
         }
-        
     }
     log::info!("Parsed {} settings attributes", count);
     Ok(game_setttings)

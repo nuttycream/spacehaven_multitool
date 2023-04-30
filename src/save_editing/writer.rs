@@ -18,7 +18,6 @@ pub fn write_save(gamesave: &GameSave) -> Result<(), Box<dyn Error>> {
         amount = n.attribute_value("ca").unwrap();
     })?;
 
-
     let mut player_bank = root.get_first_node("/game/playerBank").unwrap();
     set_attribute_value_node(&mut player_bank, "ca", gamesave.bank)?;
     write_ships(&mut root, &gamesave.ships)?;
@@ -50,7 +49,7 @@ fn write_ships(root: &mut NodePtr, ships: &Vec<Ship>) -> Result<(), Box<dyn Erro
             log::info!("Writing {} to ship nodes", ship.name);
             write_characters(&mut ship_node, &ship.characters)?;
             write_storages(&mut ship_node, &ship.item_storages)?;
-            write_tools(&mut ship_node, &ship.tool_storages)?;
+            write_tools(&ship_node, &ship.tool_storages)?;
             ship_count += 1;
             log::info!("Completed {} of {} ship nodes", ship_count, ship_node_count);
         }
@@ -75,10 +74,10 @@ fn write_characters(
         let character_node_name = get_attribute_value_node::<String>(&character_node, "name")?;
         if let Some(character) = character_by_name.get(&character_node_name) {
             set_attribute_value_node(&mut character_node, "side", &character.side)?;
-            write_stats(&mut character_node, &character.stats)?;
-            write_attributes(&mut character_node, &character.attributes)?;
-            write_traits(&mut character_node, &character.traits)?;
-            write_skills(&mut character_node, &character.skills)?;
+            write_stats(&character_node, &character.stats)?;
+            write_attributes(&character_node, &character.attributes)?;
+            write_traits(&character_node, &character.traits)?;
+            write_skills(&character_node, &character.skills)?;
 
             character_count += 1;
             if character_count == character_node_count {
@@ -90,10 +89,7 @@ fn write_characters(
     Ok(())
 }
 
-fn write_stats(
-    char_node: &mut NodePtr,
-    stats: &HashMap<String, i32>,
-) -> Result<(), Box<dyn Error>> {
+fn write_stats(char_node: &NodePtr, stats: &HashMap<String, i32>) -> Result<(), Box<dyn Error>> {
     let props_nodes = char_node.get_nodeset("./props/*[@v]")?;
     for mut stats_node in props_nodes {
         if let Some(stat) = stats.get(&stats_node.local_name()) {
@@ -163,17 +159,15 @@ fn write_storages(
     Ok(())
 }
 
-fn write_tools(ship_node: &NodePtr, tools: &Vec<i32>) -> Result<(), Box<dyn Error>> {
+fn write_tools(ship_node: &NodePtr, tools: &[i32]) -> Result<(), Box<dyn Error>> {
     let tool_nodes = ship_node.get_nodeset("./e/lfeat/prod/inv/s[@elementaryId=162]")?;
-    let mut count = 0;
-    for mut tool_node in tool_nodes {
+    for (count, mut tool_node) in tool_nodes.into_iter().enumerate() {
         set_attribute_value_node(&mut tool_node, "inStorage", tools[count])?;
-        count = count + 1;
     }
     Ok(())
 }
 
-fn write_factions(root: &mut NodePtr, factions: &Vec<Faction>) -> Result<(), Box<dyn Error>> {
+fn write_factions(root: &mut NodePtr, factions: &[Faction]) -> Result<(), Box<dyn Error>> {
     let faction_nodes = root.get_nodeset("/game/hostmap/map/l")?;
 
     let mut faction_count = 0;
@@ -190,14 +184,14 @@ fn write_factions(root: &mut NodePtr, factions: &Vec<Faction>) -> Result<(), Box
         if let Some(relationship) =
             faction.and_then(|f| f.relationships.iter().find(|r| r.name == relationship_name))
         {
-            set_attribute_value_node(&mut faction_node, "relationship", &relationship.amount)?;
-            set_attribute_value_node(&mut faction_node, "patience", &relationship.patience)?;
+            set_attribute_value_node(&mut faction_node, "relationship", relationship.amount)?;
+            set_attribute_value_node(&mut faction_node, "patience", relationship.patience)?;
             set_attribute_value_node(&mut faction_node, "stance", &relationship.stance)?;
-            set_attribute_value_node(&mut faction_node, "accessTrade", &relationship.trade)?;
-            set_attribute_value_node(&mut faction_node, "accessShip", &relationship.ship)?;
-            set_attribute_value_node(&mut faction_node, "accessVision", &relationship.vision)?;
+            set_attribute_value_node(&mut faction_node, "accessTrade", relationship.trade)?;
+            set_attribute_value_node(&mut faction_node, "accessShip", relationship.ship)?;
+            set_attribute_value_node(&mut faction_node, "accessVision", relationship.vision)?;
 
-            faction_count = faction_count + 1;
+            faction_count += 1;
         }
     }
 
@@ -233,14 +227,13 @@ fn write_research(root: &mut NodePtr, research_tree: &Vec<Tech>) -> Result<(), B
                 research.and_then(|t| t.stages.iter().find(|s| *s.0 == stage_level))
             {
                 if let Some(mut blocks_node) = stage_node.get_first_node("./blocksDone") {
-                    set_attribute_value_node(&mut blocks_node, "level1", &stage.1.basic)?;
-                    set_attribute_value_node(&mut blocks_node, "level2", &stage.1.intermediate)?;
-                    set_attribute_value_node(&mut blocks_node, "level3", &stage.1.advanced)?;
-                    
+                    set_attribute_value_node(&mut blocks_node, "level1", stage.1.basic)?;
+                    set_attribute_value_node(&mut blocks_node, "level2", stage.1.intermediate)?;
+                    set_attribute_value_node(&mut blocks_node, "level3", stage.1.advanced)?;
                 }
             }
         }
-        count = count + 1;
+        count += 1;
     }
 
     log::info!(
@@ -263,8 +256,8 @@ fn write_game_settings(
                 .iter()
                 .find(|s| *s.0 == settings_attribute.name())
             {
-                settings_attribute.set_attribute(&settings.0, &settings.1);
-                count = count + 1;
+                settings_attribute.set_attribute(settings.0, settings.1);
+                count += 1;
             }
         }
     }
