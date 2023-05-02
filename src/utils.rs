@@ -68,7 +68,7 @@ pub fn get_save_dirs() -> Result<Vec<(String, std::path::PathBuf)>, Box<dyn std:
     Ok(results)
 }
 
-fn find_steam_game() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+pub fn find_steam_game() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
     let mut steamdir = steamlocate::SteamDir::locate().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,

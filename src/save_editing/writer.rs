@@ -45,7 +45,10 @@ fn write_ships(root: &mut NodePtr, ships: &Vec<Ship>) -> Result<(), Box<dyn Erro
     for mut ship_node in ship_nodes {
         let ship_node_name = get_attribute_value_node::<String>(&ship_node, "sname")
             .unwrap_or("NO NAME".to_string());
+        
         if let Some(ship) = ships_by_name.get(&ship_node_name) {
+            set_attribute_value_node(&mut ship_node, "sx", ship.size_x)?;
+            set_attribute_value_node(&mut ship_node, "sy", ship.size_y)?;
             log::info!("Writing {} to ship nodes", ship.name);
             write_characters(&mut ship_node, &ship.characters)?;
             write_storages(&mut ship_node, &ship.item_storages)?;

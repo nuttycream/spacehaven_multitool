@@ -23,6 +23,7 @@ zip = "0.6.4"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tracing-subscriber = "0.3"
 
+
 # fast and small wasm
 [profile.release]
 opt-level = "z"
@@ -33,5 +34,10 @@ codegen-units = 1
 panic = "abort"
 
 # Optimize all dependencies even in debug builds:
-[profile.dev.package."*"]
+[profile.dev]
 opt-level = 2
+incremental = true
+debug = true
+lto = false
+codegen-units = 256
+rpath = false
