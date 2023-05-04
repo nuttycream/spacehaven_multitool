@@ -12,12 +12,6 @@ pub fn write_save(gamesave: &GameSave) -> Result<(), Box<dyn Error>> {
     log::info!("Saving {}", save_path.display());
     let mut root = doc.root_element();
 
-    let mut amount = String::new();
-
-    root.each_node("/game/playerBank[@ca]", |n| {
-        amount = n.attribute_value("ca").unwrap();
-    })?;
-
     let mut player_bank = root.get_first_node("/game/playerBank").unwrap();
     set_attribute_value_node(&mut player_bank, "ca", gamesave.bank)?;
     write_ships(&mut root, &gamesave.ships)?;

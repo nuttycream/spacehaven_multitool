@@ -1,8 +1,6 @@
-use crate::utils::{get_attribute_value_node, set_attribute_value_node};
-use amxml::dom::*;
+use crate::utils::get_attribute_value_node;
+use amxml::dom::NodePtr;
 use std::{collections::HashMap, error::Error};
-
-type PatchFunction = fn(&mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn Error>>;
 
 fn attribute_set(patch_args: &mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn Error>> {
     let attribute = patch_args
@@ -80,8 +78,7 @@ fn attribute_math(patch_args: &mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn
     let binding = value
         .attribute_value("opType")
         .ok_or("Could not get Operation Type for AttributeMath")?;
-    let operation_type = binding
-        .as_str();
+    let operation_type = binding.as_str();
 
     let current_core_lib_elements: Vec<&mut NodePtr> = patch_args
         .iter_mut()
@@ -138,10 +135,7 @@ fn node_add(patch_args: &mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn Error
 }
 
 fn node_insert(patch_args: &mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn Error>> {
-    let value = patch_args
-        .get("value")
-        .ok_or("value not found")?
-        .clone();
+    let value = patch_args.get("value").ok_or("value not found")?.clone();
 
     let current_core_lib_elements: Vec<&mut NodePtr> = patch_args
         .iter_mut()
@@ -190,16 +184,64 @@ fn bad_op(_patch_args: &mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn Error>
     Err("Unrecognized Patch Operation".into())
 }
 
-fn patch_dispatch(p_type: &str) -> PatchFunction {
+fn patch_dispatch(p_type: &str, patch_args: &mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn Error>> {
     match p_type {
-        "AttributeSet" => attribute_set,
-        "AttributeAdd" => attribute_add,
-        "AttributeRemove" => attribute_remove,
-        "AttributeMath" => attribute_math,
-        "Add" => node_add,
-        "Insert" => node_insert,
-        "Remove" => node_remove,
-        "Replace" => node_replace,
-        _ => bad_op,
+        "AttributeSet" => attribute_set(patch_args),
+        "AttributeAdd" => attribute_add(patch_args),
+        "AttributeRemove" => attribute_remove(patch_args),
+        "AttributeMath" => attribute_math(patch_args),
+        "Add" => node_add(patch_args),
+        "Insert" => node_insert(patch_args),
+        "Remove" => node_remove(patch_args),
+        "Replace" => node_replace(patch_args),
+        _ => bad_op(patch_args),
     }
+}
+
+fn do_patch_type(core_library: &NodePtr, patch: &NodePtr, location: &str) -> Result<(), Box<dyn Error>> {
+    let binding = patch
+        .attribute_value("Class")
+        .ok_or("Failed to find patch type class")?;
+    let patch_type = binding.as_str();
+    let xpath = patch
+        .get_first_node("./xpath")
+        .ok_or("Could not find xpath for patch")?
+        .value();
+    
+    let current_core_lib_elements = core_library.get_nodeset(&xpath)?;
+    let mut patch_args: HashMap<&str, NodePtr> = HashMap::new();
+    patch_args.insert("value", patch.get_first_node("value").unwrap());
+    patch_args.insert("attribute", patch.get_first_node("attribute").unwrap());
+    for core_lib_element in current_core_lib_elements {
+        patch_args.insert("coreLibsElem", core_lib_element);
+    }
+    patch_dispatch(patch_type, &mut patch_args)?;
+
+    // # Replace Config Variables with user chosen value.
+    // TODO: Prefer to do this elsewhere.
+    //     if mod.variables:
+    //         for var in mod.variables:
+    //             patchArgs["value"].text = patchArgs["value"].text.replace( str(var.name), str(var.value) )
+
+    Ok(())
+}
+
+
+pub fn do_patches(
+    core_library: &NodePtr,
+    mod_library: HashMap<&str, Vec<NodePtr>>,
+) -> Result<(), Box<dyn Error>> {
+
+    for (location, patches) in mod_library.iter() {
+        for patch in patches {
+            if patch.get_first_node("/Noload").is_some() {
+                continue;
+            }
+            for patch_operation in patch.get_nodeset("./Operation")? {
+                do_patch_type(core_library, &patch_operation, location)?;
+            }
+        }
+    }
+    Ok(())
+
 }
