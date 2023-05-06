@@ -1,53 +1,53 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, error::Error, path::Path, fs::File, io::Read};
+use super::get_patchable_xml_files;
 
-pub fn merge() {
+fn build_library(location: &str, mod_dir: &str) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
 
-    let haven_id_lookup_table: HashMap<&str, &str> = [
-        ("/data/BackPack", "mid"),
-        ("/data/BackStory", "id"),
-        ("/data/CelestialObject", "id"),
-        ("/data/Character", "cid"),
-        ("/data/CharacterCondition", "id"),
-        ("/data/CharacterSet", "cid"),
-        ("/data/CharacterTrait", "id"),
-        ("/data/CostGroup", "id"),
-        ("/data/Craft", "cid"),
-        ("/data/DataLog", "id"),
-        ("/data/DataLogFragment", "id"),
-        ("/data/DefaultStuff", "id"),
-        ("/data/DialogChoice", "id"),
-        ("/data/DifficultySettings", "id"),
-        ("/data/Effect", "id"),
-        ("/data/Element", "mid"),
-        ("/data/Encounter", "id"),
-        ("/data/Explosion", "id"),
-        ("/data/Faction", "id"),
-        ("/data/FloorExpPackage", "id"),
-        ("/data/GameScenario", "id"),
-        ("/data/GOAPAction", "id"),
-        ("/data/IdleAnim", "id"),
-        ("/data/IsoFX", "id"),
-        ("/data/Item", "mid"),
-        ("/data/MainCat", "id"),
-        ("/data/Monster", "cid"),
-        ("/data/Notes", "id"),
-        ("/data/ObjectiveCollection", "nid"),
-        ("/data/PersonalitySettings", "id"),
-        ("/data/Plan", "id"),
-        ("/data/Product", "eid"),
-        ("/data/Randomizer", "id"),
-        ("/data/RandomShip", "id"),
-        ("/data/Robot", "cid"),
-        ("/data/RoofExpPackage", "id"),
-        ("/data/Room", "rid"),
-        ("/data/Sector", "id"),
-        ("/data/Ship", "rid"),
-        ("/data/SubCat", "id"),
-        ("/data/Tech", "id"),
-        ("/data/TechTree", "id"),
-        ("/data/TradingValues", "id"),
-    ]
-    .iter()
-    .copied()
-    .collect();
+    let mut location_library = HashMap::new();
+
+    let mod_path = Path::new(mod_dir);
+
+    let location_path = mod_path.join(location);
+    let location_files = match location_path.read_dir() {
+        Ok(files) => files
+            .map(|entry| entry.unwrap().path().display().to_string())
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+
+    // we allow breaking down mod xml files into smaller pieces for readability
+    for target in get_patchable_xml_files() {
+        let target_in_location = target.replace("library", location);
+        for mod_file in &location_files {
+            if !mod_file.starts_with(&target_in_location) {
+                continue;
+            }
+            let key = target.to_string();
+            let entry = location_library.entry(key).or_insert_with(Vec::new);
+
+            let mut file = File::open(mod_file)?;
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)?;
+
+            entry.push(contents);
+        }
+
+        let mut mod_file = mod_path.join(&target);
+        // try again with the extension ?
+        if !mod_file.exists() {
+            mod_file.set_extension("xml");
+            if !mod_file.exists() {
+                continue;
+            }
+        }
+        let entry = location_library.entry(target).or_insert_with(Vec::new);
+
+        let mut file = File::open(mod_file)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+
+        entry.push(contents);
+    }
+
+    Ok(location_library)
 }

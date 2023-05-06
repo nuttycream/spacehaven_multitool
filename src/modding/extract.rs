@@ -1,27 +1,45 @@
-use std::{error::Error, fs::File, path::Path};
+use std::{error::Error, fs::File, io::BufReader, path::Path};
 use zip::{ZipArchive, ZipWriter};
 
 use super::{get_patchable_cim_files, get_patchable_xml_files};
 use crate::utils::find_steam_game;
 
-fn extract(jar_path: &Path, core_path: &Path) -> Result<(), Box<dyn Error>> {
-    let full_path = find_steam_game()?.join(core_path);
-    if !full_path.join(core_path).exists() {
-        std::fs::create_dir_all(&full_path).expect("Failed to create directory");
+//core_path is /spacehaven/mods/spacehaven_[gameversion]
+//jar_path is main spacehaven folder
+pub fn extract() -> Result<(), Box<dyn Error>> {
+    let jar_path = find_steam_game()?.join("spacehaven.jar");
+
+    let core_path = find_steam_game()?.join("mods").join("spacehaven");
+    if !core_path.exists() {
+        std::fs::create_dir_all(&core_path).expect("Failed to create directory");
+        log::info!("Created a directory at: {}", core_path.display())
     }
 
     let zip_file = File::open(jar_path)?;
+
     let mut zip_archive = ZipArchive::new(zip_file)?;
 
     for i in 0..zip_archive.len() {
-        let mut zip_file = zip_archive.by_index(i)?;
-        let file_path = std::path::PathBuf::from(zip_file.name());
+        let mut file = zip_archive.by_index(i)?;
+        let file_name = file.name();
 
-        if file_path.starts_with("library/") && !file_path.ends_with("/") {
-            let target_path = core_path.join(&file_path);
-            std::fs::create_dir_all(target_path.parent().unwrap())?;
-            let mut target_file = File::create(&target_path)?;
-            std::io::copy(&mut zip_file, &mut target_file)?;
+        if file_name.starts_with("library/") {
+            let outpath = match file.enclosed_name() {
+                Some(path) => core_path.join(path),
+                None => continue,
+            };
+
+            if (*file.name()).ends_with('/') {
+                std::fs::create_dir_all(&outpath)?;
+            } else {
+                if let Some(p) = outpath.parent() {
+                    if !p.exists() {
+                        std::fs::create_dir_all(p)?;
+                    }
+                }
+                let mut out_file = File::create(outpath)?;
+                std::io::copy(&mut file, &mut out_file)?;
+            }
         }
     }
     Ok(())

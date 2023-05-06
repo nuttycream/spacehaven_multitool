@@ -234,7 +234,7 @@ pub fn do_patches(
 
     for (location, patches) in mod_library.iter() {
         for patch in patches {
-            if patch.get_first_node("/Noload").is_some() {
+            if patch.get_first_node("./Noload").is_some() {
                 continue;
             }
             for patch_operation in patch.get_nodeset("./Operation")? {
