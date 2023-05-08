@@ -5,6 +5,7 @@ use super::{get_patchable_cim_files, get_patchable_xml_files};
 use crate::utils::find_steam_game;
 
 //core_path is /spacehaven/mods/spacehaven_[gameversion]
+//core_library is library path for game code: core_path + /library
 //jar_path is main spacehaven folder
 pub fn extract() -> Result<(), Box<dyn Error>> {
     let jar_path = find_steam_game()?.join("spacehaven.jar");

@@ -5,8 +5,8 @@ pub mod load;
 pub mod merge;
 pub mod patch;
 pub mod database;
+pub mod texture;
 pub mod config;
-pub mod texture_manager;
 
 pub fn get_patchable_xml_files() -> Vec<String> {
     vec![
