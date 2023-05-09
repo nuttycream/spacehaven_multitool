@@ -1,10 +1,10 @@
-use std::{collections::HashMap, error::Error, path::Path, fs::File, io::Read};
 use super::get_patchable_xml_files;
+use std::{collections::HashMap, error::Error, fs::File, io::Read, path::Path};
 
-
-
-fn build_library(location: &str, mod_dir: &str) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
-
+fn build_library(
+    location: &str,
+    mod_dir: &str,
+) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
     let mut location_library = HashMap::new();
 
     let mod_path = Path::new(mod_dir);
