@@ -2,6 +2,7 @@ use crate::utils::get_attribute_value_node;
 use amxml::dom::NodePtr;
 use std::{collections::HashMap, error::Error};
 
+
 fn attribute_set(patch_args: &mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn Error>> {
     let attribute = patch_args
         .get("attribute")
@@ -184,7 +185,10 @@ fn bad_op(_patch_args: &mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn Error>
     Err("Unrecognized Patch Operation".into())
 }
 
-fn patch_dispatch(p_type: &str, patch_args: &mut HashMap<&str, NodePtr>) -> Result<(), Box<dyn Error>> {
+fn patch_dispatch(
+    p_type: &str,
+    patch_args: &mut HashMap<&str, NodePtr>,
+) -> Result<(), Box<dyn Error>> {
     match p_type {
         "AttributeSet" => attribute_set(patch_args),
         "AttributeAdd" => attribute_add(patch_args),
@@ -198,7 +202,11 @@ fn patch_dispatch(p_type: &str, patch_args: &mut HashMap<&str, NodePtr>) -> Resu
     }
 }
 
-fn do_patch_type(core_library: &NodePtr, patch: &NodePtr, location: &str) -> Result<(), Box<dyn Error>> {
+fn do_patch_type(
+    core_library: HashMap<&str, NodePtr>,
+    patch: &NodePtr,
+    location: &str,
+) -> Result<(), Box<dyn Error>> {
     let binding = patch
         .attribute_value("Class")
         .ok_or("Failed to find patch type class")?;
@@ -207,15 +215,20 @@ fn do_patch_type(core_library: &NodePtr, patch: &NodePtr, location: &str) -> Res
         .get_first_node("./xpath")
         .ok_or("Could not find xpath for patch")?
         .value();
-    
-    let current_core_lib_elements = core_library.get_nodeset(&xpath)?;
-    let mut patch_args: HashMap<&str, NodePtr> = HashMap::new();
-    patch_args.insert("value", patch.get_first_node("value").unwrap());
-    patch_args.insert("attribute", patch.get_first_node("attribute").unwrap());
-    for core_lib_element in current_core_lib_elements {
-        patch_args.insert("coreLibsElem", core_lib_element);
+
+    if let Some(current_core_lib) = core_library.get(location) {
+        let current_core_lib_elements = current_core_lib.get_nodeset(&xpath)?;
+        let mut patch_args: HashMap<&str, NodePtr> = HashMap::new();
+        patch_args.insert("value", patch.get_first_node("value").unwrap());
+        patch_args.insert("attribute", patch.get_first_node("attribute").unwrap());
+        for core_lib_element in current_core_lib_elements {
+            patch_args.insert("coreLibsElem", core_lib_element);
+        }
+        patch_dispatch(patch_type, &mut patch_args)?;
+
+        // TODO: Replace Config Variables with user chosen value
+        // if mod.variables { ... }
     }
-    patch_dispatch(patch_type, &mut patch_args)?;
 
     // # Replace Config Variables with user chosen value.
     // TODO: Prefer to do this elsewhere.
@@ -226,9 +239,8 @@ fn do_patch_type(core_library: &NodePtr, patch: &NodePtr, location: &str) -> Res
     Ok(())
 }
 
-
 pub fn do_patches(
-    core_library: &NodePtr,
+    core_library: HashMap<&str, NodePtr>,
     mod_library: HashMap<&str, Vec<NodePtr>>,
 ) -> Result<(), Box<dyn Error>> {
 
@@ -238,10 +250,11 @@ pub fn do_patches(
                 continue;
             }
             for patch_operation in patch.get_nodeset("./Operation")? {
-                do_patch_type(core_library, &patch_operation, location)?;
+                //TODO: why clone?
+                do_patch_type(core_library.clone(), &patch_operation, location)?; 
             }
         }
     }
+    
     Ok(())
-
 }

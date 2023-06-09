@@ -12,3 +12,11 @@ pub use config::Config;
 pub use app::App;
 pub use modding::view::ModdingView;
 pub use save_editing::view::SaveEditingView;
+
+
+//TODO: Implement Config
+pub struct GameInfo {
+    game_path: std::path::PathBuf, //jarpath, game root folder
+    version: String,
+}
+

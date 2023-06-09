@@ -1,7 +1,7 @@
-use std::{error::Error, fs::File, io::BufReader, path::Path};
+use std::{error::Error, fs::File, path::Path};
 use zip::{ZipArchive, ZipWriter};
 
-use super::{get_patchable_cim_files, get_patchable_xml_files};
+//use super::{get_patchable_cim_files, get_patchable_xml_files};
 use crate::utils::find_steam_game;
 
 //core_path is /spacehaven/mods/spacehaven_[gameversion]
@@ -46,6 +46,7 @@ pub fn extract() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/*
 fn patch(
     jar_path: &Path,
     core_path: &Path,
@@ -88,3 +89,5 @@ fn patch(
     patched_archive.finish()?;
     Ok(())
 }
+
+*/
