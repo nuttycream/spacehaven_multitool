@@ -1,5 +1,5 @@
-use std::{error::Error, fs::File, path::Path};
-use zip::{ZipArchive, ZipWriter};
+use std::{error::Error, fs::File};
+use zip::{ZipArchive};
 
 //use super::{get_patchable_cim_files, get_patchable_xml_files};
 use crate::utils::find_steam_game;
@@ -24,7 +24,7 @@ pub fn extract() -> Result<(), Box<dyn Error>> {
         let mut file = zip_archive.by_index(i)?;
         let file_name = file.name();
 
-        if file_name.starts_with("library/") {
+        if file_name.starts_with("library/") || file_name == "version.txt" {
             let outpath = match file.enclosed_name() {
                 Some(path) => core_path.join(path),
                 None => continue,

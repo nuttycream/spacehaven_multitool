@@ -15,8 +15,3 @@ pub use save_editing::view::SaveEditingView;
 
 
 //TODO: Implement Config
-pub struct GameInfo {
-    game_path: std::path::PathBuf, //jarpath, game root folder
-    version: String,
-}
-

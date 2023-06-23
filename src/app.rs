@@ -1,3 +1,5 @@
+use egui::{RichText, Color32};
+
 use crate::{ModdingView, SaveEditingView};
 
 #[derive(Default)]
@@ -12,31 +14,31 @@ impl eframe::App for SaveEditingTab {
 }
 
 #[derive(Default)]
-pub struct ModdingTab {
-    modding: ModdingView,
+pub struct ModdingTab<'a> {
+    modding: ModdingView<'a>,
 }
 
-impl eframe::App for ModdingTab {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.modding.ui(ctx);
+impl eframe::App for ModdingTab<'_> {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.modding.ui(ctx, frame);
     }
 }
 
 #[derive(Default)]
-struct State {
+struct State<'a> {
     save_editing: SaveEditingTab,
-    modding: ModdingTab,
+    modding: ModdingTab<'a>,
 
     selected_anchor: String,
     //settings_window: SettingsWindow,
 }
 
 #[derive(Default)]
-pub struct App {
-    state: State,
+pub struct App<'a> {
+    state: State<'a>,
 }
 
-impl eframe::App for App {
+impl eframe::App for App<'_> {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if self.state.selected_anchor.is_empty() {
             let selected_anchor = self.apps_iter_mut().next().unwrap().0.to_owned();
@@ -59,7 +61,7 @@ impl eframe::App for App {
     }
 }
 
-impl App {
+impl App<'_> {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self::default()
     }
@@ -67,12 +69,12 @@ impl App {
     fn apps_iter_mut(&mut self) -> impl Iterator<Item = (&str, &str, &mut dyn eframe::App)> {
         vec![
             (
-                "Saves",
+                "Save Editor",
                 "save_editor",
                 &mut self.state.save_editing as &mut dyn eframe::App,
             ),
             (
-                "Mods",
+                "Mod Manager",
                 "modding",
                 &mut self.state.modding as &mut dyn eframe::App,
             ),
@@ -127,6 +129,14 @@ impl App {
             }
 
             ui.separator();
+
+            if ui.button("LAUNCH GAME").clicked() {
+
+            }
+
+            ui.separator();
+
+            ui.label(RichText::new("unmodified").color(Color32::YELLOW));
 
             //ui.toggle_value(&mut self.state.settings_window.show_window, "🔧")
             //.on_hover_text("Settings");

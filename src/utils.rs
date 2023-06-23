@@ -41,14 +41,14 @@ where
     match result {
         Some(value) => Ok(value),
         None => Err(format!(
-            "Attribute {} not found in {} node",
+            "Failed to get find attribute: Attribute '{}' not found in '{}' node",
             attr_name,
             node.local_name()
         )
         .into()),
     }
     .map_err(|e: Box<dyn std::error::Error>| {
-        format!("Failed to parse attribute value: {}", e).into()
+        format!("Failed to parse attribute value for '{}': {}", attr_name, e).into()
     })
 }
 
@@ -70,7 +70,7 @@ where
         Ok(())
     } else {
         Err(format!(
-            "Attribute {} not found in {} node",
+            "Failed to set attribute value: Attribute '{}' not found in '{}' node",
             attr_name,
             node.local_name()
         )

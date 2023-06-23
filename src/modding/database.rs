@@ -1,61 +1,17 @@
-use std::{collections::HashMap, error::Error, path::PathBuf};
+use egui_extras::RetainedImage;
+use std::{collections::HashMap, error::Error, io::Read, path::PathBuf};
 
 use amxml::dom::{new_document, NodePtr};
 
 use crate::utils::{get_attribute_value_node, get_mod_dirs};
 use std::str::FromStr;
 
-pub enum ConfigVarValue {
-    Str(String),
-    Int(i32),
-    Float(f64),
-    Bool(bool),
-}
-
-impl FromStr for ConfigVarValue {
-    type Err = (); //todo, implement a generic error from std lib
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.trim().to_lowercase();
-        if s.starts_with("str") || s.starts_with("text") || s.starts_with("txt") || s.is_empty() {
-            Ok(ConfigVarValue::Str(s.to_string()))
-        } else if s.starts_with("int") {
-            s[3..]
-                .parse::<i32>()
-                .map(ConfigVarValue::Int)
-                .map_err(|_| ())
-        } else if s.starts_with("float") {
-            s[5..]
-                .parse::<f64>()
-                .map(ConfigVarValue::Float)
-                .map_err(|_| ())
-        } else if s.starts_with("bool") {
-            match s[4..].trim() {
-                "1" | "-1" | "t" | "y" | "true" | "yes" | "on" => Ok(ConfigVarValue::Bool(true)),
-                _ => Ok(ConfigVarValue::Bool(false)),
-            }
-        } else {
-            Err(())
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct ModConfigVar {
-    pub text: String,
-    pub value: Option<String>,
-    pub var_type: Option<ConfigVarValue>,
-    pub size: Option<f64>,
-    pub min: Option<f64>,
-    pub max: Option<f64>,
-    pub default: Option<String>,
-}
-
 #[derive(Default)]
 pub struct Mod {
     pub name: String,
     pub min_loader_ver: String,
     pub supported_game_vers: Vec<String>,
+    pub info_path: PathBuf,
 
     //in the future all mods should have these mandatory
     pub version: Option<String>,
@@ -64,7 +20,7 @@ pub struct Mod {
     pub description: Option<String>,
 
     //optional, permanently
-    pub preview: Option<PathBuf>, // Should be image, will only use path for now
+    pub preview: Option<RetainedImage>, // Should be image, will only use path for now
     pub website: Option<String>,
     pub nexusmods: Option<String>,
     pub order: Option<i32>,
@@ -72,9 +28,56 @@ pub struct Mod {
     pub path: PathBuf,
     pub enabled: bool,
 
+    //for merge
     pub mapped_ids: HashMap<String, i32>,
     pub config_variables: Option<HashMap<String, ModConfigVar>>,
-    pub info_path: PathBuf,
+    pub prefix: i32,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConfigVarValue {
+    Str(String),
+    Int(i32),
+    Float(f64),
+    Bool(bool),
+}
+
+impl FromStr for ConfigVarValue {
+    type Err = Box<dyn Error>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim().to_lowercase();
+        if s.is_empty() {
+            Ok(ConfigVarValue::Str(s))
+        } else {
+            // Try to parse as int
+            if let Ok(int) = s.parse::<i32>() {
+                return Ok(ConfigVarValue::Int(int));
+            }
+            // Try to parse as float
+            if let Ok(float) = s.parse::<f64>() {
+                return Ok(ConfigVarValue::Float(float));
+            }
+            // Try to parse as bool
+            match s.as_str() {
+                "1" | "-1" | "t" | "y" | "true" | "yes" | "on" => Ok(ConfigVarValue::Bool(true)),
+                "0" | "f" | "n" | "false" | "no" | "off" => Ok(ConfigVarValue::Bool(false)),
+                // If all else fails, treat it as a string
+                _ => Ok(ConfigVarValue::Str(s)),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ModConfigVar {
+    pub text: String,
+    pub value: String,
+    pub var_type: ConfigVarValue,
+    pub size: Option<f64>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub default: Option<String>,
 }
 
 pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
@@ -83,6 +86,16 @@ pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
     let mod_dirs = get_mod_dirs()?;
 
     for mod_dir in &mod_dirs {
+        let mut preview = None;
+        let preview_path = mod_dir.join("preview.png");
+        if preview_path.exists() {
+            let mut buffer = vec![];
+            std::fs::File::open(preview_path)
+                .unwrap()
+                .read_to_end(&mut buffer)
+                .unwrap();
+            preview = Some(RetainedImage::from_image_bytes("preview", &buffer[..]).unwrap());
+        }
         let mut info_path = mod_dir.join("info");
         if !info_path.exists() {
             info_path.set_extension("xml");
@@ -123,7 +136,6 @@ pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
                 ))?
                 .value();
 
-
             let mut supported_game_vers = Vec::new();
             for game_version in root.get_nodeset("//gameVersions/v/text()")? {
                 supported_game_vers.push(game_version.value());
@@ -139,7 +151,10 @@ pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
                 config_variables = Some(read_vars(&config_node)?);
             }
 
-            
+            let mut prefix = 9999;
+            if let Some(mod_id) = root.get_first_node("//modid/text()") {
+                prefix = mod_id.value().parse::<i32>()?;
+            }
 
             mods.push(Mod {
                 name,
@@ -148,16 +163,17 @@ pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
                 version,
                 min_loader_ver,
                 supported_game_vers,
-                
+
                 //None for now
                 min_multitool_ver: None,
 
                 //TODO: Implement
-                preview: None,
+                preview,
                 website: None,
                 nexusmods: None,
                 order,
 
+                prefix,
                 path: mod_dir.to_path_buf(),
                 enabled: true,
                 mapped_ids: HashMap::new(),
@@ -167,12 +183,10 @@ pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
         }
     }
 
-    mods.sort_by(|mod_a, mod_b| {
-        match (mod_a.order, mod_b.order) {
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            _ => mod_a.order.cmp(&mod_b.order),
-        }
+    mods.sort_by(|mod_a, mod_b| match (mod_a.order, mod_b.order) {
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        _ => mod_a.order.cmp(&mod_b.order),
     });
 
     log::info!("Loaded {}/{} mods", mods.len(), mod_dirs.len());
@@ -193,21 +207,42 @@ fn read_vars(config_node: &NodePtr) -> Result<HashMap<String, ModConfigVar>, Box
             .ok_or(format!("No Text Value name for {}", &name))?
             .value();
 
+        let value: String = get_attribute_value_node(&var_node, "value")?;
+        let var_type = value.parse::<ConfigVarValue>()?;
 
+        let mut size = None;
+        let mut min = None;
+        let mut max = None;
+        let mut default = None;
+
+        if let Ok(size_attr) = get_attribute_value_node(&var_node, "size") {
+            size = Some(size_attr);
+        }
+
+        if let Ok(min_attr) = get_attribute_value_node(&var_node, "min") {
+            min = Some(min_attr);
+        }
+
+        if let Ok(max_attr) = get_attribute_value_node(&var_node, "max") {
+            max = Some(max_attr);
+        }
+
+        if let Ok(def_attr) = get_attribute_value_node(&var_node, "default") {
+            default = Some(def_attr);
+        }
 
         mod_config_var.insert(
             name,
             ModConfigVar {
                 text,
-                value: None,
-                var_type: None,
-                size: None,
-                min: None,
-                max: None,
-                default: None,
+                value,
+                var_type,
+                size,
+                min,
+                max,
+                default,
             },
         );
     }
-
     Ok(mod_config_var)
 }
