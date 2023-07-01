@@ -1863,6 +1863,7 @@ dependencies = [
  "egui_extras",
  "flate2",
  "image",
+ "indexmap",
  "log",
  "md5",
  "once_cell",

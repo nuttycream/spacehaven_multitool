@@ -1,4 +1,5 @@
 use amxml::dom::{new_document, NodePtr};
+use image::io::Reader as ImageReader;
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
@@ -457,11 +458,13 @@ fn detect_textures(
                     &mut modded_textures,
                     &mut mapping_n_region,
                     &mut seen_textures,
-                )
+                );
             }
+
             if !mapping_n_region.contains_key(&mod_local_id) {
                 continue;
             }
+
             let new_id = mapping_n_region
                 .get(&mod_local_id)
                 .ok_or(format!("Could not retrieve mod local id: {}", mod_local_id))?;
@@ -512,8 +515,28 @@ fn detect_textures(
 
         let texture_id = current_mod.prefix;
 
+
+        //let mut packer = Packer::new();
+        let mut sum_a = 0;
+        let mut sum_w = 0;
+        let mut sum_h = 0;
+        let mut min_required_dimension = 2048;
+
+        for region_name in needs_autogeneration {
+            let path = textures_path.join(region_name);
+            let img = ImageReader::open(&path)?.decode()?.into_rgba8();
+            let (w, h) = img.dimensions();
+            //packer.rect_pack
+            //min_required_dimension = max(min_required_dimension, w, h)
+            sum_a += w * h;
+            sum_w += w;
+            sum_h += h;
+        }
+
         
     }
+
+    
 
     Ok(modded_textures)
 }

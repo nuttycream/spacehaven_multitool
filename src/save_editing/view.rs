@@ -1,3 +1,5 @@
+use crate::config::Config;
+
 use super::{gamesave::GameSave, parser::read_save, writer::write_save};
 
 #[derive(Default)]
@@ -6,6 +8,10 @@ pub struct SaveEditingView {
 }
 
 impl SaveEditingView {
+    pub fn new(&mut self, config: &Config) {
+        
+    }
+
     pub fn ui(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Load Test").clicked() {
@@ -23,7 +29,7 @@ fn load_save() -> GameSave {
     let result = match read_save(
         "A Small Hope-1".to_string(),
         std::path::Path::new(
-            r"C:\Program Files (x86)\Steam\steamapps\common\SpaceHaven\savegames\Abandoned Mining Station-1\save",
+            r"C:\Program Files (x86)\Steam\steamapps\common\SpaceHaven\savegames\Basic Platform-1\save",
         ),
     ) {
         Ok(save_game) => {

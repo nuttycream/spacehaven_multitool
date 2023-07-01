@@ -1,6 +1,6 @@
-use egui::{RichText, Color32};
+use egui::{Color32, RichText};
 
-use crate::{ModdingView, SaveEditingView};
+use crate::{utils::find_steam_game, ModdingView, SaveEditingView, config::Config};
 
 #[derive(Default)]
 pub struct SaveEditingTab {
@@ -13,32 +13,69 @@ impl eframe::App for SaveEditingTab {
     }
 }
 
-#[derive(Default)]
-pub struct ModdingTab<'a> {
-    modding: ModdingView<'a>,
+impl SaveEditingTab {
+    pub fn new(config: &Config) -> Self {
+        let mut save_editing = SaveEditingView::default();
+        save_editing.new(config);
+        Self {
+            save_editing,
+        }
+    }
 }
 
-impl eframe::App for ModdingTab<'_> {
+#[derive(Default)]
+pub struct ModdingTab {
+    modding: ModdingView,
+}
+
+impl eframe::App for ModdingTab {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.modding.ui(ctx, frame);
     }
 }
 
+impl ModdingTab {
+    pub fn new(config: &Config) -> Self {
+        let mut modding = ModdingView::default();
+        modding.new(config);
+        Self {
+            modding,
+        }
+    }
+}
+
 #[derive(Default)]
-struct State<'a> {
+pub struct SettingsWindow {
+
+}
+
+#[derive(Default)]
+struct State {
     save_editing: SaveEditingTab,
-    modding: ModdingTab<'a>,
+    modding: ModdingTab,
 
     selected_anchor: String,
-    //settings_window: SettingsWindow,
+    settings_window: SettingsWindow,
+}
+
+impl State {
+    pub fn new(config: &Config) -> Self {
+        Self {
+            save_editing: SaveEditingTab::new(config),
+            modding: ModdingTab::new(config),
+            selected_anchor: String::new(),
+            settings_window: Default::default(),
+        }
+    }
 }
 
 #[derive(Default)]
-pub struct App<'a> {
-    state: State<'a>,
+pub struct App {
+    state: State,
+    config: Config,
 }
 
-impl eframe::App for App<'_> {
+impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if self.state.selected_anchor.is_empty() {
             let selected_anchor = self.apps_iter_mut().next().unwrap().0.to_owned();
@@ -61,9 +98,14 @@ impl eframe::App for App<'_> {
     }
 }
 
-impl App<'_> {
+impl App {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        Self::default()
+        let config = Config::load_from_file("config.toml");
+        let state = State::new(&config);
+        Self {
+            state,
+            config,
+        }
     }
 
     fn apps_iter_mut(&mut self) -> impl Iterator<Item = (&str, &str, &mut dyn eframe::App)> {
@@ -109,10 +151,24 @@ impl App<'_> {
         }
         self.state.selected_anchor = selected_anchor;
 
+        ui.separator();
+
+        if ui.button("LAUNCH GAME").clicked() {
+            if let Ok(mut game) = find_steam_game() {
+                game = game.join("spacehaven");
+                match std::process::Command::new(game).spawn() {
+                    Ok(_) => log::info!("Launching Game"),
+                    Err(e) => log::warn!("Failed to launch game: {}", e),
+                }
+            } else {
+                log::warn!("Could not find steam game");
+            }
+        }
+
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.hyperlink_to(
                 env!("CARGO_PKG_VERSION"),
-                "https://github.com/nuttycream/spacehaven-multitool",
+                "https://github.com/nuttycream/spacehaven_multitool",
             )
             .on_hover_ui(|ui| {
                 ui.label("Check for Updates");
@@ -126,12 +182,6 @@ impl App<'_> {
                 .clicked()
             {
                 ui.ctx().memory_mut(|mem| mem.reset_areas());
-            }
-
-            ui.separator();
-
-            if ui.button("LAUNCH GAME").clicked() {
-
             }
 
             ui.separator();

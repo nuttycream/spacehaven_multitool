@@ -27,6 +27,7 @@ byteorder = "1.4.3"
 md5 = "0.7.0"
 flate2 = "1.0.26"
 image = "0.24.6"
+indexmap = "1.9.3"
 
 
 # native:

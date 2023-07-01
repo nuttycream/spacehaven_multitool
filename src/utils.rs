@@ -97,6 +97,9 @@ pub fn get_mod_dirs() -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Err
                 }
             }
         }
+    } else {
+        log::warn!("No 'mods' folder found, creating anew.");
+        std::fs::create_dir(gamedir)?;
     }
 
     Ok(results)

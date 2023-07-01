@@ -1,4 +1,5 @@
 use egui_extras::RetainedImage;
+use indexmap::IndexMap;
 use std::{collections::HashMap, error::Error, io::Read, path::PathBuf};
 
 use amxml::dom::{new_document, NodePtr};
@@ -30,8 +31,8 @@ pub struct Mod {
 
     //for merge
     pub mapped_ids: HashMap<String, i32>,
-    pub config_variables: Option<HashMap<String, ModConfigVar>>,
-    pub prefix: i32,
+    pub config_variables: Option<IndexMap<String, ModConfigVar>>,
+    pub prefix: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +79,49 @@ pub struct ModConfigVar {
     pub min: Option<f64>,
     pub max: Option<f64>,
     pub default: Option<String>,
+}
+
+impl Mod {
+    pub fn reset_to_defaults(&mut self) {
+        if let Some(config_variables) = &mut self.config_variables {
+            log::info!("Resetting config variables for {} to its default values", self.name);
+            for (_, vars) in config_variables {
+                vars.set_default();
+            }
+        }
+    }
+
+    pub fn save_to_file(&mut self) {
+        
+    }
+}
+
+impl ModConfigVar {
+    fn set_default(&mut self) {
+        if let Some(default) = &self.default {
+            match &mut self.var_type {
+                ConfigVarValue::Str(_) => {
+                    self.var_type = ConfigVarValue::Str(default.clone());
+                },
+                ConfigVarValue::Int(_var) => {
+                    if let Ok(default_int) = default.parse::<i32>() {
+                        self.var_type = ConfigVarValue::Int(default_int);
+                    }
+                },
+                ConfigVarValue::Float(_var) => {
+                    if let Ok(default_float) = default.parse::<f64>() {
+                        self.var_type = ConfigVarValue::Float(default_float);
+                    }
+                },
+                ConfigVarValue::Bool(_var) => {
+                    if let Ok(default_bool) = default.parse::<bool>() {
+                        self.var_type = ConfigVarValue::Bool(default_bool);
+                    }
+                },
+            };
+            self.value = default.to_string();
+        }
+    }
 }
 
 pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
@@ -151,9 +195,11 @@ pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
                 config_variables = Some(read_vars(&config_node)?);
             }
 
-            let mut prefix = 9999;
+            let prefix;
             if let Some(mod_id) = root.get_first_node("//modid/text()") {
-                prefix = mod_id.value().parse::<i32>()?;
+                prefix = mod_id.value().parse::<u64>()?;
+            } else {
+                prefix = generate_mod_id(&name);
             }
 
             mods.push(Mod {
@@ -183,6 +229,11 @@ pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
         }
     }
 
+    if mods.is_empty() {
+        log::warn!("No mods found");
+        return Ok(mods)
+    }
+
     mods.sort_by(|mod_a, mod_b| match (mod_a.order, mod_b.order) {
         (Some(_), None) => std::cmp::Ordering::Less,
         (None, Some(_)) => std::cmp::Ordering::Greater,
@@ -194,13 +245,11 @@ pub fn load_mods() -> Result<Vec<Mod>, Box<dyn Error>> {
     Ok(mods)
 }
 
-fn read_vars(config_node: &NodePtr) -> Result<HashMap<String, ModConfigVar>, Box<dyn Error>> {
-    let mut mod_config_var = HashMap::new();
+fn read_vars(config_node: &NodePtr) -> Result<IndexMap<String, ModConfigVar>, Box<dyn Error>> {
+    let mut mod_config_var = IndexMap::new();
+    let var_nodes = config_node.get_nodeset("//var")?;
 
-    for var_node in config_node.children() {
-        if !(var_node.name() == "var") {
-            continue;
-        }
+    for var_node in var_nodes {
         let name = get_attribute_value_node(&var_node, "name")?;
         let text = var_node
             .get_first_node(".//text()")
@@ -245,4 +294,12 @@ fn read_vars(config_node: &NodePtr) -> Result<HashMap<String, ModConfigVar>, Box
         );
     }
     Ok(mod_config_var)
+}
+
+pub fn generate_mod_id(s: &str) -> u64 {
+    let mut result = 0;
+    for (i, byte) in s.bytes().enumerate() {
+        result += u64::from(byte) << (i % 8 * 8);
+    }
+    result % 1_000_000_000
 }
