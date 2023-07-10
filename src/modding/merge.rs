@@ -1,5 +1,5 @@
 use amxml::dom::{new_document, NodePtr};
-use image::io::Reader as ImageReader;
+use image::{io::Reader as ImageReader, DynamicImage};
 use std::{
     collections::{HashMap, HashSet},
     error::Error,
@@ -80,7 +80,7 @@ fn _get_patchable_cim_files() -> Vec<String> {
     patchable_cim_files
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct CoreLibrary {
     node_dictionary: HashMap<String, NodePtr>,
     modded_textures: HashMap<String, TextureMetadata>,
@@ -88,6 +88,13 @@ pub struct CoreLibrary {
 
     last_core_region_id: i32,
     next_region_id: i32,
+}
+
+#[derive(Default, Debug)]
+struct TextureMetadata {
+    region_id: String,
+    filename: String,
+    path: std::path::PathBuf,
 }
 
 pub fn init_mods(active_mods: &Vec<Mod>) -> Result<(), Box<dyn Error>> {
@@ -287,6 +294,7 @@ fn merge(
     }
 
     core_library.modded_textures = detect_textures(core_library, mod_lib, active_mod)?;
+    //log::warn!("{} modded textures: {:?}", active_mod.name, core_library.modded_textures);
 
     Ok(())
 }
@@ -355,21 +363,17 @@ fn get_base_root(base_file: &mut NodePtr, xpath: &str) -> Result<NodePtr, Box<dy
         .ok_or_else(|| format!("Base library has no node at xpath: {}", xpath).into())
 }
 
-struct TextureMetadata {
-    region_id: String,
-    filename: String,
-    path: std::path::PathBuf,
-}
-
 fn detect_textures(
     core_library: &mut CoreLibrary,
     mut mod_lib: HashMap<String, Vec<NodePtr>>,
     current_mod: &Mod,
 ) -> Result<HashMap<String, TextureMetadata>, Box<dyn Error>> {
+    //log::warn!("Modding textures");
     let mut modded_textures = HashMap::new();
 
     let textures_path = current_mod.path.join("textures");
     if !textures_path.is_dir() {
+        //log::warn!("No textures directory found.");
         return Ok(modded_textures);
     }
 
@@ -430,6 +434,7 @@ fn detect_textures(
 
     // No custom mod textures, no need to remap ids
     if mapping_n_region.is_empty() && !auto_animations {
+        log::info!("No custom mod textures found for {}", current_mod.name);
         return Ok(modded_textures);
     }
 
@@ -503,8 +508,6 @@ fn detect_textures(
     }
 
     if !needs_autogeneration.is_empty() {
-        let image_count = needs_autogeneration.len();
-
         let regions_node = textures_mod
             .get_first_node("//regions")
             .ok_or(format!("No regions node found for {}", &current_mod.name))?;
@@ -515,28 +518,140 @@ fn detect_textures(
 
         let texture_id = current_mod.prefix;
 
-
-        //let mut packer = Packer::new();
         let mut sum_a = 0;
         let mut sum_w = 0;
         let mut sum_h = 0;
-        let mut min_required_dimension = 2048;
+        let initial_bin_size: i32 = 2048; // Set initial bin size to 2048
 
-        for region_name in needs_autogeneration {
+        let mut packer = rect_packer::DensePacker::new(initial_bin_size, initial_bin_size);
+        let mut rects = Vec::new(); // Keep track of rectangles and their dimensions
+
+        for region_name in &needs_autogeneration {
             let path = textures_path.join(region_name);
             let img = ImageReader::open(&path)?.decode()?.into_rgba8();
             let (w, h) = img.dimensions();
-            //packer.rect_pack
-            //min_required_dimension = max(min_required_dimension, w, h)
-            sum_a += w * h;
-            sum_w += w;
-            sum_h += h;
+            rects.push((w as i32, h as i32, region_name.clone())); // Save rectangle dimensions
+            sum_a += (w * h) as i32;
+            sum_w += w as i32;
+            sum_h += h as i32;
         }
 
-        
+        // Now calculate the actual bin size
+        let max_required_dimension = ((sum_w * sum_h) as f64).sqrt().ceil() as i32;
+        let mut size_estimate = 1.2;
+        let mut base_area = (sum_a as f64).sqrt().ceil() as i32;
+        base_area = base_area.max(initial_bin_size);
+
+        let mut size = 0;
+        while size < max_required_dimension {
+            size = (base_area as f64 * size_estimate) as i32;
+            packer.resize(size, size); // Update the packer size
+            let mut all_packed = true;
+            for &(w, h, ref region_name) in &rects {
+                log::info!("Packing region: {}", region_name);
+                if packer.pack(w, h, false).is_none() {
+                    all_packed = false;
+                    break;
+                }
+            }
+            if all_packed {
+                break;
+            }
+            size_estimate += 0.1;
+        }
+        let mut rect_positions = Vec::new(); // Keep track of rectangle positions
+
+        // Pack the textures and keep their positions
+        for &(w, h, ref region_name) in &rects {
+            log::info!("Packing region: {}", region_name);
+            if let Some(position) = packer.pack(w, h, false) {
+                rect_positions.push((w, h, region_name.clone(), position));
+            } else {
+                return Err(format!("Failed to pack region: {}", region_name).into());
+            }
+        }
+
+        let texture_id_str = texture_id.to_string();
+        let size_str = size.to_string();
+        let new_elem_string = format!(
+            "<t i=\"{}\" w=\"{}\" h=\"{}\"/>",
+            texture_id_str, size_str, size_str
+        );
+
+        let new_texture = new_document(&new_elem_string)?;
+        textures_node.append_child(&new_texture);
+        core_library
+            .custom_textures_cim
+            .insert(texture_id.to_string(), new_texture.attributes());
+
+        let size_u32 = size as u32;
+        let mut export_path = current_mod.path.clone();
+        export_path.push(format!("custom_texture_{}.png", texture_id));
+
+        let mut custom_png = DynamicImage::new_rgba8(size_u32, size_u32);
+
+        for (w, h, region_name, position) in &rect_positions {
+            let path = textures_path.join(&region_name);
+            let img = ImageReader::open(&path)?.decode()?.into_rgba8();
+            let resized = image::imageops::resize(
+                &img,
+                *w as u32,
+                *h as u32,
+                image::imageops::FilterType::Nearest,
+            );
+
+            // Subtract the x-coordinate of the position from the width of the larger texture
+            let x_flipped = size_u32 - (position.x as u32) - *w as u32;
+
+            image::imageops::replace(
+                &mut custom_png,
+                &resized,
+                x_flipped as i64, // Use the flipped x-coordinate
+                position.y as i64,
+            );
+        }
+
+        custom_png.save(export_path)?;
+
+        // Sort the rect_positions vector based on the region names
+        rect_positions.sort_by(|a, b| a.2.cmp(&b.2));
+
+        for (w, h, region_name, position) in rect_positions {
+            let x = position.x.to_string();
+            let y = position.y.to_string();
+            let w = w.to_string();
+            let h = h.to_string();
+            let new_elem_string = format!(
+                "<re n=\"{}\" t=\"{}\" x=\"{}\" y=\"{}\" w=\"{}\" h=\"{}\" file=\"{}\"/>",
+                region_name, texture_id_str, x, y, w, h, region_name
+            );
+
+            let new_region = new_document(&new_elem_string)?;
+            regions_node.append_child(&new_region);
+        }
     }
 
-    
+    let region_vec = textures_mod.get_nodeset("//re[@n]")?;
+    for mut asset in region_vec {
+        let mod_local_id: String = get_attribute_value_node(&asset, "n")?;
+        if !mapping_n_region.contains_key(&mod_local_id) {
+            continue;
+        }
+        let new_id = &mapping_n_region[&mod_local_id];
+        log::info!("Mapping texture 're' {} to {}", mod_local_id, new_id);
+        set_attribute_value_node(&mut asset, "n", new_id)?;
+    }
+
+    if auto_animations {
+        let textures_xml = textures_mod.to_string();
+        let xml_path = current_mod
+            .path
+            .join("library")
+            .join("generated_textures.xml");
+
+        // Write the pretty XML string to the file
+        std::fs::write(xml_path, textures_xml.as_bytes())?;
+    }
 
     Ok(modded_textures)
 }

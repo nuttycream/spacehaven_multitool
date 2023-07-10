@@ -119,6 +119,48 @@ fn add_texture(filename: PathBuf, core_library: &CoreLibrary) -> Result<bool, Bo
         }
     }
 
+    let mut sum_a = 0;
+    let mut sum_w = 0;
+    let mut sum_h = 0;
+    let mut min_required_dimension: u32 = 2048;
+    let config = rect_packer::Config {
+        width: min_required_dimension as i32,
+        height: min_required_dimension as i32,
+
+        border_padding: 0,
+        rectangle_padding: 0,
+    };
+    let mut packer = Packer::new(config);
+    for region_name in needs_autogeneration {
+        let path = textures_path.join(region_name);
+        let img = ImageReader::open(&path)?.decode()?.into_rgba8();
+        let (w, h) = img.dimensions();
+        packer.pack(w as i32, h as i32, false);
+        min_required_dimension = min_required_dimension.max(w).max(h);
+        sum_a += w * h;
+        sum_w += w;
+        sum_h += h;
+    }
+
+    // The absolute largest size that can be needed to fit everything.
+    let max_required_dimension = ((sum_h * sum_w) as f64).sqrt().ceil() as u32;
+
+    // Increase size estimate until it is large enough.
+    let mut size = 0;
+    let mut size_estimate = 1.2;
+    let base_area = (sum_a as f64).sqrt().ceil() as u32;
+    let mut packed_count = 0;
+
+    while size < max_required_dimension && image_count != packed_count {
+        size = (base_area as f64 * size_estimate) as u32;
+        packer = Packer::new(rect_packer::Config {
+            width: size as i32,
+            height: size as i32,
+            border_padding: 0,
+            rectangle_padding: 0,
+        })
+    }
+
     Ok(false)
 }
 
@@ -203,9 +245,10 @@ fn init_mods(
             continue;
         }
 
-        let page = region.attribute_value("t")
+        let page = region
+            .attribute_value("t")
             .ok_or("Could not get value for t")?;
-        
+
         let cims = Vec::new();
         let mut extra_assets = Vec::new();
 
@@ -219,17 +262,13 @@ fn init_mods(
                 width = core_library.custom_textures["_custom_textures_cim"][&page]["w"];
                 height = core_library.custom_textures["_custom_textures_cim"][&page]["h"];
                 extra_assets.push(format!("library/{}", cim_name));
-            } 
-            
+            }
+
             //cims[page] = Texture::new(corepath_str, create, width, height);
         }
-
-
-
     }
     Ok(())
 }
-
 
 fn merge_definitions2(
     base_lib: &mut CoreLibrary,
@@ -241,7 +280,7 @@ fn merge_definitions2(
     if !mod_lib.contains_key(&file) {
         return Err(format!("Cannot find {} in mod library", file).into());
     }
-    
+
     // Get the base root
     let base_root = base_lib
         .node_dictionary
@@ -249,7 +288,6 @@ fn merge_definitions2(
         .ok_or_else(|| format!("Base library does not contain file: {}", file))?
         .get_first_node(&xpath)
         .ok_or_else(|| format!("Base library {} has no node at xpath: {}", file, xpath))?;
-
 
     let mod_root_list = mod_lib
         .get(&file)
