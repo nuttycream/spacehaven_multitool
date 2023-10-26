@@ -23,11 +23,11 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load_from_file(path: &str) -> Self {
+    pub fn load_from_file(_path: &str) -> Self {
         Config::default()
     }
 
-    pub fn save_to_file(&self, path: &str) {
+    pub fn save_to_file(&self, _path: &str) {
         // implementation here
     }
 }

@@ -8,7 +8,7 @@ pub struct SaveEditingView {
 }
 
 impl SaveEditingView {
-    pub fn new(&mut self, config: &Config) {
+    pub fn new(&mut self, _config: &Config) {
         
     }
 

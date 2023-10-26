@@ -8,7 +8,7 @@ use std::{
 
 use crate::utils::{get_attribute_value_node, set_attribute_value_node};
 
-use super::{database::Mod, texture::Texture};
+use super::{database::Mod, patch::do_patches, texture::Texture};
 
 fn get_haven_id_table() -> HashMap<&'static str, &'static str> {
     let mut lookup_table = HashMap::new();
@@ -71,7 +71,7 @@ fn get_patchable_xml_files() -> Vec<String> {
     .collect()
 }
 
-fn _get_patchable_cim_files() -> Vec<String> {
+fn get_patchable_cim_files() -> Vec<String> {
     let mut patchable_cim_files = Vec::with_capacity(26);
     for i in 0..26 {
         let filename = format!("library/{}.cim", i);
@@ -82,16 +82,16 @@ fn _get_patchable_cim_files() -> Vec<String> {
 
 #[derive(Default, Debug)]
 pub struct CoreLibrary {
-    node_dictionary: HashMap<String, NodePtr>,
-    modded_textures: HashMap<String, TextureMetadata>,
-    custom_textures_cim: HashMap<String, Vec<NodePtr>>,
+    pub node_dictionary: HashMap<String, NodePtr>,
+    pub modded_textures: HashMap<String, TextureMetadata>,
+    pub custom_textures_cim: HashMap<String, Vec<NodePtr>>,
 
-    last_core_region_id: i32,
-    next_region_id: i32,
+    pub last_core_region_id: i32,
+    pub next_region_id: i32,
 }
 
 #[derive(Default, Debug)]
-struct TextureMetadata {
+pub struct TextureMetadata {
     region_id: String,
     filename: String,
     path: std::path::PathBuf,
@@ -140,8 +140,9 @@ pub fn init_mods(active_mods: &Vec<Mod>) -> Result<(), Box<dyn Error>> {
             log::info!("Installing {} to the core library", active_mod.name);
 
             // Load the mod's library
-            let mod_lib = build_library("library", lib_path)?;
-            merge(&mut core_library, mod_lib, active_mod)?;
+            let mut mod_lib = build_library("library", lib_path)?;
+            merge_and_detect_textures(&mut core_library, &mut mod_lib, active_mod)?;
+            merge_definitions_after_detect_textures(&mut core_library, &mod_lib)?;
         }
     }
 
@@ -153,7 +154,7 @@ pub fn init_mods(active_mods: &Vec<Mod>) -> Result<(), Box<dyn Error>> {
             log::info!("Patching {}", active_mod.name);
 
             let patches = build_library("patches", lib_path)?;
-            // doPatches(&core_library, patches, active_mod)
+            do_patches(&mut core_library, &patches, active_mod)?;
         }
     }
 
@@ -175,7 +176,7 @@ pub fn init_mods(active_mods: &Vec<Mod>) -> Result<(), Box<dyn Error>> {
     // Add or overwrite textures from mods
     let cims: HashMap<String, Texture> = HashMap::new();
     let re_export_cims: HashMap<String, Texture> = HashMap::new();
-    let extra_assets: Vec<String> = Vec::new();
+    let _extra_assets: Vec<String> = Vec::new();
 
     let texture_lib = core_library
         .node_dictionary
@@ -189,12 +190,18 @@ pub fn init_mods(active_mods: &Vec<Mod>) -> Result<(), Box<dyn Error>> {
             continue;
         }
 
-        let png_file = core_library.modded_textures.get(&name).unwrap().clone();
+        let _png_file = core_library.modded_textures.get(&name).unwrap().clone();
 
         let page: String = get_attribute_value_node(&region, "t")?;
 
         if !cims.contains_key(&page) {
+            log::warn!("Reached here 2");
             let cim_name = format!("{}.cim", page);
+            let create = !get_patchable_cim_files().contains(&(format!("library/{}", cim_name)));
+
+            for attribute in &core_library.custom_textures_cim[&page] {
+                log::info!("{:?}", attribute);
+            }
         }
     }
 
@@ -235,7 +242,7 @@ fn build_library(
 
             log::info!("{} => {}", &mod_file, &target);
 
-            let xml_path = mod_path.join(&mod_file);
+            let xml_path = mod_path.join(mod_file);
             let xml_string = std::fs::read_to_string(&xml_path)?;
             let node = amxml::dom::new_document(&xml_string)?;
 
@@ -247,24 +254,25 @@ fn build_library(
 }
 
 //
-fn merge(
+fn merge_and_detect_textures(
     core_library: &mut CoreLibrary,
-    mod_lib: HashMap<String, Vec<NodePtr>>,
+    mod_lib: &mut HashMap<String, Vec<NodePtr>>,
     active_mod: &Mod,
 ) -> Result<(), Box<dyn Error>> {
     // Do an element-wise merge (replacing conflicts)
     let mut current_file = "library/haven";
+    let mod_lib_clone = mod_lib.clone();
 
-    if mod_lib.contains_key(current_file) {
+    if mod_lib_clone.contains_key(current_file) {
         let base_file = get_base_file(core_library, current_file)?;
 
         for (path, loc_id) in get_haven_id_table() {
             //log::info!("xpath: {}, attribute: {}", path, loc_id);
-            let mut base_root = get_base_root(base_file, &path)?;
+            let mut base_root = get_base_root(base_file, path)?;
             let xpath = format!("/{}", path);
             match merge_definitions(
                 &mut base_root,
-                mod_lib.to_owned(),
+                &mod_lib,
                 current_file.to_string(),
                 xpath,
                 loc_id.to_string(),
@@ -278,12 +286,12 @@ fn merge(
     }
 
     current_file = "library/texts";
-    if mod_lib.contains_key(current_file) {
+    if mod_lib_clone.contains_key(current_file) {
         let base_file = get_base_file(core_library, current_file)?;
         let mut base_root = get_base_root(base_file, "//t")?;
         match merge_definitions(
             &mut base_root,
-            mod_lib.to_owned(),
+            &mod_lib,
             current_file.to_string(),
             "//t".to_string(),
             "id".to_string(),
@@ -299,9 +307,62 @@ fn merge(
     Ok(())
 }
 
+fn merge_definitions_after_detect_textures(
+    core_library: &mut CoreLibrary,
+    mod_lib: &HashMap<String, Vec<NodePtr>>,
+) -> Result<(), Box<dyn Error>> {
+    let mut current_file = "library/animations";
+    if mod_lib.contains_key(current_file) {
+        let base_file = get_base_file(core_library, current_file)?;
+        let mut base_root = get_base_root(base_file, "//AllAnimations/animations")?;
+        match merge_definitions(
+            &mut base_root,
+            &mod_lib,
+            current_file.to_string(),
+            "//AllAnimations/animations".to_string(),
+            "n".to_string(),
+        ) {
+            Ok(_) => (),
+            Err(_e) => {}
+        }
+    }
+
+    current_file = "library/textures";
+    if mod_lib.contains_key(current_file) {
+        let base_file = get_base_file(core_library, current_file)?;
+
+        let mut base_root = get_base_root(base_file, "//AllTexturesAndRegions/textures")?;
+
+        match merge_definitions(
+            &mut base_root,
+            &mod_lib,
+            current_file.to_string(),
+            "//AllTexturesAndRegions/textures".to_string(),
+            "i".to_string(),
+        ) {
+            Ok(_) => (),
+            Err(_e) => {}
+        }
+
+        base_root = get_base_root(base_file, "//AllTexturesAndRegions/regions")?;
+        match merge_definitions(
+            &mut base_root,
+            &mod_lib,
+            current_file.to_string(),
+            "//AllTexturesAndRegions/regions".to_string(),
+            "n".to_string(),
+        ) {
+            Ok(_) => (),
+            Err(_e) => {}
+        }
+    }
+
+    Ok(())
+}
+
 fn merge_definitions(
     base_root: &mut NodePtr,
-    mod_lib: HashMap<String, Vec<NodePtr>>,
+    mod_lib: &HashMap<String, Vec<NodePtr>>,
     file: String,
     xpath: String,
     id_attribute: String,
@@ -365,7 +426,7 @@ fn get_base_root(base_file: &mut NodePtr, xpath: &str) -> Result<NodePtr, Box<dy
 
 fn detect_textures(
     core_library: &mut CoreLibrary,
-    mut mod_lib: HashMap<String, Vec<NodePtr>>,
+    mod_lib: &mut HashMap<String, Vec<NodePtr>>,
     current_mod: &Mod,
 ) -> Result<HashMap<String, TextureMetadata>, Box<dyn Error>> {
     //log::warn!("Modding textures");
@@ -399,7 +460,7 @@ fn detect_textures(
     // If it doesn't and autoAnimations is true, then create a new XML structure
     if !mod_lib.contains_key("library/textures") && auto_animations {
         let xml_string = r#"<AllTexturesAndRegions><textures/><regions/></AllTexturesAndRegions>"#;
-        let doc = new_document(&xml_string).unwrap();
+        let doc = new_document(xml_string).unwrap();
 
         // Wrap the NodePtr in a vec and insert it into the mod library hashmap
         mod_lib.insert("library/textures".to_string(), vec![doc]);
@@ -473,7 +534,7 @@ fn detect_textures(
             let new_id = mapping_n_region
                 .get(&mod_local_id)
                 .ok_or(format!("Could not retrieve mod local id: {}", mod_local_id))?;
-            asset.set_attribute("a", &new_id);
+            asset.set_attribute("a", new_id);
         }
 
         // iterate on manually defined nodes
@@ -584,6 +645,7 @@ fn detect_textures(
             .custom_textures_cim
             .insert(texture_id.to_string(), new_texture.attributes());
 
+        //Prepare to export packed png to mod directory
         let size_u32 = size as u32;
         let mut export_path = current_mod.path.clone();
         export_path.push(format!("custom_texture_{}.png", texture_id));
@@ -591,7 +653,7 @@ fn detect_textures(
         let mut custom_png = DynamicImage::new_rgba8(size_u32, size_u32);
 
         for (w, h, region_name, position) in &rect_positions {
-            let path = textures_path.join(&region_name);
+            let path = textures_path.join(region_name);
             let img = ImageReader::open(&path)?.decode()?.into_rgba8();
             let resized = image::imageops::resize(
                 &img,

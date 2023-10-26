@@ -12,7 +12,7 @@ pub struct ModdingView {
 }
 
 impl ModdingView {
-    pub fn new(&mut self, config: &crate::config::Config) {
+    pub fn new(&mut self, _config: &crate::config::Config) {
         self.mods = load_mods_test();
     }
 

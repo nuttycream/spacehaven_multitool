@@ -1,13 +1,7 @@
-use image::{ImageBuffer, Rgba};
-use std::{
-    collections::HashMap,
-    error::Error,
-    path::Path,
-};
+use image::{ImageBuffer, Rgba, ImageError, GenericImageView};
+use std::{collections::HashMap, error::Error, path::Path};
 
-use crate::{
-    utils::{find_steam_game, get_attribute_value_node},
-};
+use crate::utils::{find_steam_game, get_attribute_value_node};
 
 const HEADER_SIZE: usize = 12;
 const RGBA_FORMAT: i32 = 4;
@@ -147,7 +141,7 @@ impl Texture {
 pub fn explode() -> Result<(), Box<dyn Error>> {
     let core_path = find_steam_game()?.join("mods").join("spacehaven");
 
-    let texture_path = core_path.to_path_buf().join("library").join("textures");
+    let texture_path = core_path.join("library").join("textures");
     log::info!(
         "Exploding textures from \n{}",
         &texture_path.as_path().display()
@@ -162,14 +156,14 @@ pub fn explode() -> Result<(), Box<dyn Error>> {
     log::info!("Found {} texture regions", regions.len());
 
     for region in &regions {
-        let name: String = get_attribute_value_node(&region, "n")?;
+        let name: String = get_attribute_value_node(region, "n")?;
 
-        let x = get_attribute_value_node(&region, "x")?;
-        let y = get_attribute_value_node(&region, "y")?;
-        let w = get_attribute_value_node(&region, "w")?;
-        let h = get_attribute_value_node(&region, "h")?;
+        let x = get_attribute_value_node(region, "x")?;
+        let y = get_attribute_value_node(region, "y")?;
+        let w = get_attribute_value_node(region, "w")?;
+        let h = get_attribute_value_node(region, "h")?;
 
-        let page: String = get_attribute_value_node(&region, "t")?;
+        let page: String = get_attribute_value_node(region, "t")?;
 
         if !cims.contains_key(&page) {
             let cim_filename = format!("{}.cim", page);
